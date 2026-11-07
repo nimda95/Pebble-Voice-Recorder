@@ -1,0 +1,953 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Voice Recorder</title>
+<style>
+:root {
+  --bg: #f2f2f6;
+  --card: #ffffff;
+  --text: #16161a;
+  --muted: #6c6c76;
+  --line: #e3e3e8;
+  --fill: #ececf1;
+  --accent: #e5484d;
+  --accent-ink: #ffffff;
+  --good: #2f9e57;
+  --warn: #c27c0e;
+  --bad: #e5484d;
+  --shadow: 0 1px 2px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04);
+  --radius: 14px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e0e11;
+    --card: #1b1b20;
+    --text: #f2f2f5;
+    --muted: #9a9aa6;
+    --line: #2c2c33;
+    --fill: #26262d;
+    --accent: #ff5f63;
+    --good: #46c174;
+    --warn: #e3a23a;
+    --bad: #ff5f63;
+    --shadow: none;
+  }
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; background: var(--bg); color: var(--text); }
+body {
+  font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  padding: env(safe-area-inset-top) 16px calc(40px + env(safe-area-inset-bottom));
+  max-width: 640px; margin: 0 auto;
+}
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+h1 { font-size: 28px; margin: 18px 0 2px; letter-spacing: -.01em; }
+h2 { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 26px 4px 8px; }
+.sub { color: var(--muted); font-size: 14px; }
+.top { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
+.pill { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; padding: 4px 10px; border-radius: 99px; background: var(--fill); color: var(--muted); white-space: nowrap; margin-bottom: 6px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+.dot.good { background: var(--good); } .dot.warn { background: var(--warn); } .dot.bad { background: var(--bad); }
+
+.banner { margin: 16px 0 0; padding: 12px 14px; border-radius: var(--radius); background: var(--card); box-shadow: var(--shadow); font-size: 15px; display: none; }
+.banner.show { display: block; }
+
+.card, .group { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); }
+.group { overflow: hidden; }
+.row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; min-height: 50px; border-top: 1px solid var(--line); }
+.row:first-child { border-top: 0; }
+.row .label { flex: 1; min-width: 0; }
+.row .label small { display: block; color: var(--muted); font-size: 13px; }
+.row.stack { display: block; }
+.row.stack .label { margin-bottom: 8px; }
+
+/* recorder */
+.recorder { margin-top: 16px; padding: 18px 16px 16px; text-align: center; }
+.rec-state { font-weight: 600; font-size: 15px; color: var(--muted); }
+.rec-state.live { color: var(--accent); }
+.rec-time { font-size: 56px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.02em; line-height: 1.1; margin: 2px 0 6px; }
+.health { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600; }
+.rec-where { color: var(--muted); font-size: 14px; margin-top: 4px; }
+.rec-actions { display: flex; gap: 10px; justify-content: center; margin-top: 16px; flex-wrap: wrap; }
+.btn { border: 0; border-radius: 12px; padding: 11px 18px; background: var(--fill); font-weight: 600; display: inline-flex; align-items: center; gap: 8px; }
+.btn:disabled { opacity: .45; }
+.btn.primary { background: var(--accent); color: var(--accent-ink); }
+.btn.big { padding: 14px 26px; font-size: 17px; border-radius: 16px; }
+.btn.small { padding: 7px 12px; font-size: 14px; border-radius: 10px; }
+.btn.danger { color: var(--bad); }
+.btn svg { width: 18px; height: 18px; flex: none; }
+
+/* segmented + switch + fields */
+.seg { display: inline-flex; background: var(--fill); border-radius: 10px; padding: 2px; flex-wrap: wrap; }
+.seg button { border: 0; background: transparent; padding: 6px 12px; border-radius: 8px; font-size: 14px; font-weight: 600; color: var(--muted); }
+.seg button.on { background: var(--card); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+.seg.wide { display: flex; } .seg.wide button { flex: 1; }
+.switch { position: relative; width: 50px; height: 30px; flex: none; }
+.switch input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; z-index: 1; }
+.switch span { position: absolute; inset: 0; border-radius: 99px; background: var(--fill); transition: background .2s; }
+.switch span::after { content: ""; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.25); transition: transform .2s; }
+.switch input:checked + span { background: var(--good); }
+.switch input:checked + span::after { transform: translateX(20px); }
+.field { display: block; width: 100%; border: 1px solid var(--line); background: var(--bg); border-radius: 10px; padding: 10px 12px; font-size: 15px; outline: none; }
+.field:focus { border-color: var(--accent); }
+.fields { display: grid; gap: 10px; }
+.fields label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+select.field { appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%); background-position: calc(100% - 18px) 55%, calc(100% - 13px) 55%; background-size: 5px 5px; background-repeat: no-repeat; padding-right: 32px; }
+.test { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+.test .result { font-size: 14px; color: var(--muted); }
+.test .result.ok { color: var(--good); } .test .result.err { color: var(--bad); }
+.hint { font-size: 13px; color: var(--muted); margin-top: 8px; }
+.hidden { display: none !important; }
+
+/* storage bars */
+.bar { height: 8px; border-radius: 99px; background: var(--fill); overflow: hidden; margin-top: 8px; }
+.bar i { display: block; height: 100%; background: var(--accent); border-radius: 99px; width: 0; transition: width .3s; }
+.num { width: 84px; text-align: right; }
+
+/* recordings */
+.rec { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-top: 1px solid var(--line); width: 100%; text-align: left; background: none; border-left: 0; border-right: 0; border-bottom: 0; }
+.rec:first-child { border-top: 0; }
+.rec .ic { width: 38px; height: 38px; border-radius: 10px; background: var(--fill); display: grid; place-items: center; flex: none; color: var(--accent); }
+.rec .ic svg { width: 20px; height: 20px; }
+.rec .body { flex: 1; min-width: 0; }
+.rec .title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rec .meta { font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; margin-top: 2px; }
+.badge { font-size: 11px; font-weight: 700; letter-spacing: .02em; padding: 2px 7px; border-radius: 99px; background: var(--fill); color: var(--muted); }
+.badge.watch { color: #3b82f6; } .badge.phone { color: var(--good); } .badge.text { color: #8b5cf6; } .badge.up { color: var(--warn); } .badge.lost { color: var(--bad); }
+.progress { height: 3px; background: var(--fill); border-radius: 99px; margin-top: 6px; overflow: hidden; }
+.progress i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s; }
+.empty { padding: 28px 16px; text-align: center; color: var(--muted); }
+.chev { color: var(--muted); flex: none; }
+
+/* sheet */
+.scrim { position: fixed; inset: 0; background: rgba(0,0,0,.4); opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 10; }
+.scrim.show { opacity: 1; pointer-events: auto; }
+.sheet { position: fixed; left: 0; right: 0; bottom: 0; max-height: 92vh; overflow: auto; background: var(--card); border-radius: 18px 18px 0 0; padding: 8px 16px calc(24px + env(safe-area-inset-bottom)); transform: translateY(105%); transition: transform .25s ease; z-index: 11; max-width: 640px; margin: 0 auto; }
+.sheet.show { transform: none; }
+.grab { width: 40px; height: 5px; border-radius: 99px; background: var(--line); margin: 4px auto 12px; }
+.sheet h3 { margin: 0; font-size: 20px; word-break: break-word; }
+.sheet .meta { color: var(--muted); font-size: 14px; margin: 4px 0 12px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+audio { width: 100%; margin: 6px 0; }
+.loadbox { display: flex; align-items: center; gap: 10px; padding: 10px 0; color: var(--muted); font-size: 14px; }
+.seglist { margin-top: 10px; border-top: 1px solid var(--line); }
+.segline { display: flex; gap: 10px; padding: 10px 6px; border-bottom: 1px solid var(--line); border-radius: 8px; }
+.segline .t { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 13px; color: var(--accent); background: none; border: 0; padding: 2px 0; flex: none; min-width: 44px; text-align: left; }
+.segline.now { background: rgba(229, 72, 77, .12); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.subhead { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin: 18px 0 6px; }
+.inline { display: flex; gap: 8px; align-items: center; }
+.inline .field { flex: 1; }
+
+/* dialog + toast */
+.dialog { position: fixed; inset: 0; display: grid; place-items: center; z-index: 20; background: rgba(0,0,0,.4); opacity: 0; pointer-events: none; transition: opacity .15s; padding: 24px; }
+.dialog.show { opacity: 1; pointer-events: auto; }
+.dialog .box { background: var(--card); border-radius: 18px; padding: 20px; max-width: 360px; width: 100%; }
+.dialog .box p { margin: 0 0 16px; }
+.dialog .opts { display: grid; gap: 8px; }
+.toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translate(-50%, 20px); background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 12px; font-size: 14px; opacity: 0; transition: all .2s; z-index: 30; max-width: calc(100% - 32px); text-align: center; pointer-events: none; }
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+footer { text-align: center; margin-top: 28px; }
+footer .sub { margin-top: 10px; }
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div>
+    <h1>Voice Recorder</h1>
+    <div class="sub" id="watchName">Pebble</div>
+  </div>
+  <span class="pill" id="conn"><span class="dot"></span><span>Connecting</span></span>
+</div>
+
+<div class="banner" id="banner"></div>
+
+<section class="card recorder" id="recorder">
+  <div class="rec-state" id="recState">Ready</div>
+  <div class="rec-time" id="recTime">0:00</div>
+  <div class="health" id="recHealth"><span class="dot"></span><span>Ready</span></div>
+  <div class="rec-where" id="recWhere">Saving to watch</div>
+  <div class="rec-actions" id="recActions"></div>
+</section>
+
+<h2>Recordings</h2>
+<section class="group" id="recs"><div class="empty">No recordings yet</div></section>
+
+<h2>Recording</h2>
+<section class="group">
+  <div class="row"><div class="label">Quality<small id="qualityInfo">8 kHz, about 4 minutes per MB</small></div>
+    <div class="seg" data-setting="quality"><button data-v="0">Standard</button><button data-v="1">High</button></div></div>
+  <div class="row"><div class="label">Save to<small id="targetInfo">Works without the phone</small></div>
+    <div class="seg" data-setting="target"><button data-v="0">Watch</button><button data-v="1">Phone</button></div></div>
+  <div class="row"><div class="label">Record on Quick Launch<small>Start recording straight away when opened with Quick Launch</small></div>
+    <label class="switch"><input type="checkbox" data-setting="quickLaunch"><span></span></label></div>
+</section>
+
+<h2>After each recording</h2>
+<section class="group">
+  <div class="row"><div class="label">Save to phone<small>Copy keeps it on the watch too; Move frees watch space</small></div>
+    <div class="seg" data-setting="autoSave"><button data-v="off">Off</button><button data-v="copy">Copy</button><button data-v="move">Move</button></div></div>
+  <div class="row"><div class="label">Transcribe<small id="autoTrInfo">In the last language you picked</small></div>
+    <label class="switch"><input type="checkbox" data-setting="autoTranscribe"><span></span></label></div>
+  <div class="row"><div class="label">Upload to WebDAV</div>
+    <label class="switch"><input type="checkbox" data-setting="autoUpload"><span></span></label></div>
+</section>
+
+<h2>Storage</h2>
+<section class="group">
+  <div class="row stack"><div class="label">Watch<small id="watchStore">Not connected</small></div><div class="bar"><i id="watchBar"></i></div></div>
+  <div class="row stack"><div class="label">Phone<small id="phoneStore">0 KB used</small></div><div class="bar"><i id="phoneBar"></i></div></div>
+  <div class="row"><div class="label">Phone storage limit<small>How much of the Pebble app's storage recordings may use</small></div>
+    <div class="inline"><input class="field num" type="number" min="1" max="500" step="1" data-setting="phoneBudgetMB"><span class="sub">MB</span></div></div>
+</section>
+
+<h2>Transcription</h2>
+<section class="group">
+  <div class="row stack"><div class="label">Service</div>
+    <div class="seg wide" data-setting="transcription.provider"><button data-v="none">Off</button><button data-v="openai">OpenAI-compatible</button><button data-v="ha">Wyoming (HA)</button></div></div>
+  <div class="row stack" id="openaiBox">
+    <div class="fields">
+      <label>Endpoint<input class="field" type="url" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="https://api.openai.com/v1" data-setting="transcription.openai.baseUrl"></label>
+      <label>API key<input class="field" type="password" autocomplete="off" placeholder="Leave empty if your server needs none" data-setting="transcription.openai.apiKey"></label>
+      <label>Model<input class="field" type="text" autocapitalize="off" spellcheck="false" placeholder="whisper-1" data-setting="transcription.openai.model"></label>
+    </div>
+    <div class="hint">Works with OpenAI and compatible servers (faster-whisper-server / Speaches, LocalAI, whisper.cpp, Groq). Models that return segments (such as whisper-1) give real timestamps; others are spread over the recording.</div>
+    <div class="test"><button class="btn small" data-test="openai">Test</button><span class="result"></span></div>
+  </div>
+  <div class="row stack" id="haBox">
+    <div class="fields">
+      <label>Home Assistant address<input class="field" type="url" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="http://homeassistant.local:8123" data-setting="transcription.ha.url"></label>
+      <label>Long-lived access token<input class="field" type="password" autocomplete="off" data-setting="transcription.ha.token"></label>
+      <label>Speech-to-text entity<input class="field" type="text" autocapitalize="off" spellcheck="false" placeholder="stt.faster_whisper" data-setting="transcription.ha.entity"></label>
+    </div>
+    <div class="hint">Phones can't open Wyoming's raw TCP port, so this goes through Home Assistant's speech-to-text API, which fronts your Wyoming faster-whisper. Audio is split at pauses, so each line gets its real start time.</div>
+    <div class="test"><button class="btn small" data-test="ha">Test</button><span class="result"></span></div>
+  </div>
+  <div class="row"><div class="label">Language<small>Used when you transcribe from the phone; the watch remembers your last pick too</small></div>
+    <select class="field" style="width:auto" data-setting="lastLang" id="langSelect"></select></div>
+</section>
+
+<h2>WebDAV</h2>
+<section class="group">
+  <div class="row stack">
+    <div class="fields">
+      <label>Server address<input class="field" type="url" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="https://cloud.example.com/remote.php/dav/files/you" data-setting="webdav.url"></label>
+      <label>Username<input class="field" type="text" autocapitalize="off" autocorrect="off" spellcheck="false" data-setting="webdav.username"></label>
+      <label>Password<input class="field" type="password" autocomplete="off" data-setting="webdav.password"></label>
+      <label>Folder<input class="field" type="text" placeholder="Voice Recorder" data-setting="webdav.folder"></label>
+    </div>
+    <div class="test"><button class="btn small" data-test="webdav">Test</button><span class="result"></span></div>
+  </div>
+  <div class="row"><div class="label">Upload the transcript too<small>As a .txt next to the audio, with timestamps</small></div>
+    <label class="switch"><input type="checkbox" data-setting="webdav.uploadTranscript"><span></span></label></div>
+</section>
+
+<footer>
+  <button class="btn big primary" id="done">Done</button>
+  <div class="sub">Changes save as you make them.</div>
+</footer>
+
+<div class="scrim" id="scrim"></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true"></div>
+<div class="dialog" id="dialog"><div class="box"><p id="dialogText"></p><div class="opts" id="dialogOpts"></div></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  // ---- Icons -------------------------------------------------------------------------------------
+  var ICON = {
+    rec: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7" fill="currentColor"/></svg>',
+    pause: '<svg viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor"/><rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor"/></svg>',
+    stop: '<svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/></svg>',
+    trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>',
+    mic: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>',
+    text: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 6h14M5 10h14M5 14h14M5 18h9"/></svg>',
+    chev: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg>'
+  };
+
+  // ---- Small helpers -----------------------------------------------------------------------------
+  function $(sel, root) { return (root || document).querySelector(sel); }
+  function $$(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function clock(ms) {
+    var s = Math.max(0, Math.floor(ms / 1000)), h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60;
+    return (h ? h + ':' + pad(m) : m) + ':' + pad(s % 60);
+  }
+  function size(b) {
+    if (b < 1024) return b + ' B';
+    if (b < 1048576) return Math.round(b / 1024) + ' KB';
+    return (b / 1048576).toFixed(b < 10485760 ? 1 : 0).replace(/\.0$/, '') + ' MB';
+  }
+  function rateOf(code) { return code ? 16000 : 8000; }
+  function duration(r) { return r.samples * 1000 / rateOf(r.rate); }
+  function when(created) {
+    var d = new Date(created * 1000), now = new Date();
+    var time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    var day = d.toDateString() === now.toDateString() ? 'Today'
+      : d.toLocaleDateString([], { month: 'short', day: 'numeric', year: d.getFullYear() === now.getFullYear() ? undefined : 'numeric' });
+    return day + ', ' + time;
+  }
+  function title(r) { return r.name || when(r.created); }
+  function get(obj, path) { return path.split('.').reduce(function (o, k) { return o == null ? o : o[k]; }, obj); }
+  function set(obj, path, v) {
+    var keys = path.split('.'), last = keys.pop(), o = obj;
+    keys.forEach(function (k) { o = o[k] = o[k] || {}; });
+    o[last] = v;
+  }
+
+  var toastTimer;
+  function toast(msg) {
+    var t = $('#toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { t.classList.remove('show'); }, 2600);
+  }
+
+  // In-page dialog: WebViews don't always support alert/confirm.
+  function ask(text, options) {
+    return new Promise(function (resolve) {
+      $('#dialogText').textContent = text;
+      var box = $('#dialogOpts');
+      box.innerHTML = '';
+      options.concat([{ label: 'Cancel', value: null }]).forEach(function (o) {
+        var b = document.createElement('button');
+        b.className = 'btn' + (o.danger ? ' danger' : '') + (o.primary ? ' primary' : '');
+        b.textContent = o.label;
+        b.onclick = function () { $('#dialog').classList.remove('show'); resolve(o.value); };
+        box.appendChild(b);
+      });
+      $('#dialog').classList.add('show');
+    });
+  }
+
+  // ---- Talking to the app's JavaScript -----------------------------------------------------------
+  var bridge = !!(window.Pebble && typeof window.Pebble.sendMessage === 'function');
+
+  function rpc(msg) {
+    var p = bridge ? window.Pebble.sendMessage('pkjs', msg) : demo.handle(msg);
+    return p.then(function (r) {
+      if (!r || r.ok === false || (r.error && r.ok === undefined)) throw new Error((r && r.error) || 'No answer');
+      return r;
+    });
+  }
+
+  // ---- State -------------------------------------------------------------------------------------
+  var S = { settings: null, state: null, recordings: [], languages: [], open: null, audio: {}, started: false };
+
+  function apply(snapshot) {
+    if (snapshot.settings) S.settings = snapshot.settings;
+    if (snapshot.state) S.state = snapshot.state;
+    if (snapshot.recordings) S.recordings = snapshot.recordings;
+    if (snapshot.languages) S.languages = snapshot.languages;
+  }
+
+  function onPush(m) {
+    if (!m) return;
+    if (m.type === 'state') { S.state = m.state; renderState(); }
+    else if (m.type === 'recordings') { S.recordings = m.recordings; if (m.usage && S.state) S.state.usage = m.usage; renderRecordings(); renderStorage(); renderSheet(); }
+    else if (m.type === 'job') { onJob(m.job); }
+    else if (m.type === 'settings') { S.settings = m.settings; renderSettings(); renderState(); }
+    else if (m.type === 'audio') { onAudio(m); }
+    else if (m.type === 'audioProgress') { var a = S.audio[m.id]; if (a && a.loading) { a.pct = m.pct; renderSheet(); } }
+  }
+
+  function onJob(job) {
+    var r = S.recordings.filter(function (x) { return x.id === job.id; })[0];
+    if (r) r.job = job.status === 'done' || job.status === 'failed' ? null : job;
+    if (job.kind === 'transcribe' && job.status === 'done' && S.open === job.id) {
+      S.transcript = null;
+      S.transcriptFor = null;
+      if (r) r.transcript = true;
+    }
+    var name = { transcribe: 'Transcription', upload: 'Upload', save: 'Saving to phone' }[job.kind];
+    if (job.status === 'done') toast(job.msg || (name + ' done'));
+    if (job.status === 'failed') toast(name + ' failed: ' + job.msg);
+    renderRecordings();
+    renderSheet();
+  }
+
+  // ---- Recorder card -----------------------------------------------------------------------------
+  var REASONS = ['Ready', 'Good', 'Slow storage', 'Storage low', 'Dropping audio', 'Phone lagging', 'Phone silent', 'Connecting', 'Mic paused'];
+  var LEVELS = ['good', 'warn', 'bad'];
+
+  function renderState() {
+    var st = S.state;
+    if (!st) return;
+    var w = st.watch || {};
+    var conn = $('#conn');
+    conn.innerHTML = '<span class="dot ' + (w.connected ? 'good' : '') + '"></span><span>' + (w.connected ? 'Watch connected' : 'Watch not connected') + '</span>';
+    var rec = st.recorder || { state: 0 };
+    var live = rec.state === 1, paused = rec.state === 2, starting = rec.state === 3, idle = !rec.state;
+    var label = live ? 'Recording' : paused ? 'Paused' : starting ? 'Starting' : 'Ready';
+    $('#recState').textContent = label;
+    $('#recState').classList.toggle('live', live || starting);
+    var health = $('#recHealth');
+    if (idle) {
+      health.classList.add('hidden');
+    } else {
+      health.classList.remove('hidden');
+      health.innerHTML = '<span class="dot ' + LEVELS[rec.health || 0] + '"></span><span>' +
+        (rec.reason === 8 ? 'Mic paused' : 'Health: ' + (REASONS[rec.reason] || 'Good')) + '</span>';
+      health.style.color = 'var(--' + LEVELS[rec.health || 0] + ')';
+    }
+    var toPhone = idle ? S.settings && S.settings.target === 1 : rec.mode === 1;
+    $('#recWhere').textContent = idle ? (toPhone ? 'Saving to phone' : 'Saving to watch') : (rec.mode === 1 ? 'Recording to the phone' : 'Recording on the watch');
+    var actions = $('#recActions');
+    var html;
+    if (!w.connected) {
+      html = '<button class="btn big primary" disabled>' + ICON.rec + 'Record on watch</button>';
+    } else if (idle) {
+      html = '<button class="btn big primary" data-ctl="start">' + ICON.rec + 'Record on watch</button>';
+    } else {
+      html = '<button class="btn" data-ctl="' + (paused ? 'resume' : 'pause') + '">' + (paused ? ICON.rec + 'Resume' : ICON.pause + 'Pause') + '</button>' +
+             '<button class="btn primary" data-ctl="stop">' + ICON.stop + 'Stop &amp; save</button>' +
+             '<button class="btn danger" data-ctl="discard">' + ICON.trash + 'Discard</button>';
+    }
+    if (actions.getAttribute('data-html') !== html) {
+      actions.innerHTML = html;
+      actions.setAttribute('data-html', html);
+    }
+    tick();
+    renderStorage();
+  }
+
+  function tick() {
+    var rec = S.state && S.state.recorder;
+    if (!rec) return;
+    var ms = rec.state ? rec.elapsed + (rec.state === 1 ? Date.now() - rec.at : 0) : 0;
+    $('#recTime').textContent = clock(ms);
+  }
+  setInterval(tick, 500);
+
+  $('#recActions').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-ctl]');
+    if (!b) return;
+    var action = b.getAttribute('data-ctl');
+    var go = action === 'discard'
+      ? ask('Discard this recording?', [{ label: 'Discard', value: true, danger: true }])
+      : Promise.resolve(true);
+    go.then(function (yes) {
+      if (!yes) return;
+      b.disabled = true;
+      rpc({ type: 'control', action: action }).catch(function (err) { toast(err.message); }).then(function () { b.disabled = false; });
+    });
+  });
+
+  // ---- Recordings list ---------------------------------------------------------------------------
+  function badges(r) {
+    var b = [];
+    if (r.open) b.push('<span class="badge" style="color:var(--accent)">Recording</span>');
+    if (r.onWatch) b.push('<span class="badge watch">Watch</span>');
+    if (r.onPhone) b.push('<span class="badge phone">Phone</span>');
+    if (r.transcript) b.push('<span class="badge text">Text' + (r.lang ? ' · ' + esc(r.lang.toUpperCase()) : '') + '</span>');
+    if (r.uploaded) b.push('<span class="badge up">Uploaded</span>');
+    if (r.lost) b.push('<span class="badge lost">' + (r.lost / 10).toFixed(1) + ' s lost</span>');
+    return b.join('');
+  }
+
+  function jobLabel(job) {
+    var what = { transcribe: 'Transcribing', upload: 'Uploading', save: 'Saving to phone' }[job.kind];
+    return job.status === 'queued' ? what + ' (waiting)' : what + (job.pct ? ' ' + job.pct + '%' : '…');
+  }
+
+  function renderRecordings() {
+    var box = $('#recs');
+    var list = S.recordings.slice().reverse();  // newest first
+    if (!list.length) {
+      box.innerHTML = '<div class="empty">No recordings yet</div>';
+      return;
+    }
+    box.innerHTML = list.map(function (r) {
+      var bytes = r.onPhone ? r.phoneBytes : r.watchBytes;
+      var meta = clock(duration(r)) + (bytes ? ' · ' + size(bytes) : '');
+      return '<button class="rec" data-id="' + r.id + '">' +
+        '<span class="ic">' + (r.onWatch || r.onPhone ? ICON.mic : ICON.text) + '</span>' +
+        '<span class="body"><span class="title">' + esc(title(r)) + '</span>' +
+        '<span class="meta">' + (r.job ? esc(jobLabel(r.job)) : esc(meta)) + ' ' + badges(r) + '</span>' +
+        (r.job ? '<span class="progress"><i style="width:' + (r.job.pct || 4) + '%"></i></span>' : '') +
+        '</span><span class="chev">' + ICON.chev + '</span></button>';
+    }).join('');
+  }
+
+  $('#recs').addEventListener('click', function (e) {
+    var row = e.target.closest('[data-id]');
+    if (row) openSheet(+row.getAttribute('data-id'));
+  });
+
+  // ---- Audio -------------------------------------------------------------------------------------
+  var STEP = [7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 19, 21, 23, 25, 28, 31, 34, 37, 41, 45, 50, 55, 60, 66, 73, 80, 88, 97, 107, 118, 130, 143, 157, 173, 190, 209, 230, 253, 279, 307, 337, 371, 408, 449, 494, 544, 598, 658, 724, 796, 876, 963, 1060, 1166, 1282, 1411, 1552, 1707, 1878, 2066, 2272, 2499, 2749, 3024, 3327, 3660, 4026, 4428, 4871, 5358, 5894, 6484, 7132, 7845, 8630, 9493, 10442, 11487, 12635, 13899, 15289, 16818, 18500, 20350, 22385, 24623, 27086, 29794, 32767];
+  var IDX = [-1, -1, -1, -1, 2, 4, 6, 8, -1, -1, -1, -1, 2, 4, 6, 8];
+
+  function decode(b64, total) {
+    var bin = atob(b64), bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    var blocks = bytes.length >> 8, count = Math.min(total || Infinity, blocks * 505);
+    var out = new Int16Array(count), o = 0, peak = 1;
+    for (var b = 0; b < blocks && o < count; b++) {
+      var base = b << 8, pred = bytes[base] | (bytes[base + 1] << 8);
+      if (pred & 0x8000) pred -= 0x10000;
+      var index = Math.min(88, bytes[base + 2]);
+      out[o++] = pred;
+      for (var k = 0; k < 504 && o < count; k++) {
+        var byte = bytes[base + 4 + (k >> 1)], nib = (k & 1) ? byte >> 4 : byte & 15;
+        var step = STEP[index], d = step >> 3;
+        if (nib & 4) d += step; if (nib & 2) d += step >> 1; if (nib & 1) d += step >> 2;
+        pred = Math.max(-32768, Math.min(32767, (nib & 8) ? pred - d : pred + d));
+        index = Math.max(0, Math.min(88, index + IDX[nib]));
+        out[o++] = pred;
+        if (pred > peak) peak = pred; else if (-pred > peak) peak = -pred;
+      }
+    }
+    var gain = Math.min(8, 29000 / peak);  // bring quiet watch recordings up
+    if (gain > 1.05) for (var j = 0; j < out.length; j++) out[j] = Math.max(-32768, Math.min(32767, Math.round(out[j] * gain)));
+    return out;
+  }
+
+  function wavBlob(pcm, rate) {
+    var buf = new ArrayBuffer(44 + pcm.length * 2), v = new DataView(buf);
+    function str(o, s) { for (var i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); }
+    str(0, 'RIFF'); v.setUint32(4, 36 + pcm.length * 2, true); str(8, 'WAVE'); str(12, 'fmt ');
+    v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, rate, true);
+    v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); str(36, 'data');
+    v.setUint32(40, pcm.length * 2, true);
+    for (var i = 0; i < pcm.length; i++) v.setInt16(44 + i * 2, pcm[i], true);
+    return new Blob([buf], { type: 'audio/wav' });
+  }
+
+  function loadAudio(r) {
+    var a = S.audio[r.id] = { loading: true, pct: 0 };
+    renderSheet();
+    rpc({ type: 'audio', id: r.id }).then(function (res) {
+      if (!res.pending) onAudio({ id: r.id, ok: true, rate: res.rate, samples: res.samples, b64: res.b64 });
+    }, function (err) {
+      a.loading = false;
+      a.error = err.message;
+      renderSheet();
+    });
+  }
+
+  function onAudio(m) {
+    var a = S.audio[m.id] || (S.audio[m.id] = {});
+    a.loading = false;
+    if (!m.ok) { a.error = m.error; renderSheet(); return; }
+    try {
+      var blob = wavBlob(decode(m.b64, m.samples), rateOf(m.rate));
+      if (a.url) URL.revokeObjectURL(a.url);
+      a.blob = blob;
+      a.url = URL.createObjectURL(blob);
+      a.error = null;
+    } catch (e) {
+      a.error = 'Couldn\'t decode the audio';
+    }
+    renderSheet();
+  }
+
+  function fileName(r) {
+    var d = new Date(r.created * 1000);
+    var stamp = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + '.' + pad(d.getMinutes());
+    var name = (r.name || '').replace(/[\\/:*?"<>|]/g, '').trim();
+    return (name ? name + ' (' + stamp + ')' : 'Recording ' + stamp) + '.wav';
+  }
+
+  function exportAudio(r) {
+    var a = S.audio[r.id];
+    if (!a || !a.blob) return;
+    var name = fileName(r);
+    var file = null;
+    try { file = new File([a.blob], name, { type: 'audio/wav' }); } catch (e) { /* old WebView */ }
+    if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+      navigator.share({ files: [file], title: name }).catch(function () {});
+      return;
+    }
+    var link = document.createElement('a');
+    link.href = a.url;
+    link.download = name;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    toast('If no download started, the Pebble app blocks downloads here. WebDAV upload works instead.');
+  }
+
+  // ---- Recording sheet ---------------------------------------------------------------------------
+  function rec(id) { return S.recordings.filter(function (r) { return r.id === id; })[0]; }
+
+  function openSheet(id) {
+    S.open = id;
+    S.transcript = null;
+    S.transcriptFor = null;
+    S.renaming = false;
+    renderSheet();
+    $('#scrim').classList.add('show');
+    $('#sheet').classList.add('show');
+  }
+
+  function closeSheet() {
+    S.open = null;
+    $('#scrim').classList.remove('show');
+    $('#sheet').classList.remove('show');
+    var audio = $('#sheet audio');
+    if (audio) audio.pause();
+  }
+  $('#scrim').addEventListener('click', closeSheet);
+
+  function langOptions(selected) {
+    return S.languages.map(function (l) {
+      return '<option value="' + l.code + '"' + (l.code === selected ? ' selected' : '') + '>' + esc(l.name) + '</option>';
+    }).join('');
+  }
+
+  function renderSheet() {
+    var sheet = $('#sheet');
+    if (S.open == null) return;
+    var r = rec(S.open);
+    if (!r) { closeSheet(); return; }
+    var caps = (S.state && S.state.caps) || 0;
+    var connected = S.state && S.state.watch && S.state.watch.connected;
+    var a = S.audio[r.id] || {};
+    var hasAudio = r.onWatch || r.onPhone;
+    var audio = $('audio', sheet);
+    var keepTime = audio && audio.src === a.url ? audio.currentTime : 0;
+    var playing = audio && !audio.paused;
+
+    var bytes = r.onPhone ? r.phoneBytes : r.watchBytes;
+    var html = '<div class="grab"></div>';
+    if (S.renaming) {
+      html += '<div class="inline"><input class="field" id="renameField" maxlength="23" value="' + esc(r.name) + '" placeholder="' + esc(when(r.created)) + '">' +
+              '<button class="btn small primary" id="renameSave">Save</button></div>';
+    } else {
+      html += '<h3>' + esc(title(r)) + '</h3>';
+    }
+    html += '<div class="meta">' + esc(when(r.created)) + ' · ' + clock(duration(r)) + (bytes ? ' · ' + size(bytes) : '') + '</div>';
+    html += '<div class="meta" style="display:flex;gap:6px;flex-wrap:wrap">' + badges(r) + '</div>';
+    if (r.job) html += '<div class="loadbox">' + esc(jobLabel(r.job)) + '</div>';
+
+    if (hasAudio) {
+      if (a.url) {
+        html += '<audio controls preload="auto" src="' + a.url + '"></audio>';
+      } else if (a.loading) {
+        html += '<div class="loadbox">' + (r.onPhone ? 'Loading audio…' : 'Fetching from the watch… ' + (a.pct || 0) + '%') + '</div>';
+      } else {
+        if (a.error) html += '<div class="loadbox" style="color:var(--bad)">' + esc(a.error) + '</div>';
+        html += '<div class="actions"><button class="btn" data-act="load"' + (!r.onPhone && !connected ? ' disabled' : '') + '>' +
+                (r.onPhone ? 'Play' : 'Play from watch') + '</button></div>';
+      }
+    }
+
+    html += '<div class="actions">';
+    if (r.onWatch && !r.onPhone) html += '<button class="btn" data-act="save"' + (connected ? '' : ' disabled') + '>Save to phone</button>';
+    if (a.url) html += '<button class="btn" data-act="export">Export .wav</button>';
+    if ((caps & 2) && hasAudio) html += '<button class="btn" data-act="upload">' + (r.uploaded ? 'Upload again' : 'Upload to WebDAV') + '</button>';
+    html += '<button class="btn" data-act="rename">Rename</button>';
+    html += '<button class="btn danger" data-act="delete">Delete</button>';
+    html += '</div>';
+
+    if ((caps & 1) && hasAudio) {
+      html += '<div class="subhead">Transcribe</div><div class="inline"><select class="field" id="trLang">' +
+              langOptions(S.settings ? S.settings.lastLang : 'en') + '</select>' +
+              '<button class="btn primary" data-act="transcribe"' + (r.job ? ' disabled' : '') + '>' + (r.transcript ? 'Again' : 'Transcribe') + '</button></div>';
+    }
+
+    if (r.transcript && !S.transcript && S.transcriptFor !== r.id) {
+      S.transcriptFor = r.id;
+      rpc({ type: 'transcript', id: r.id }).then(function (res) {
+        if (S.open === r.id) { S.transcript = res.transcript; renderSheet(); }
+      }, function () { S.transcriptFor = null; });
+    }
+    if (r.transcript) {
+      html += '<div class="subhead">Transcript' + (S.transcript && S.transcript.estimated ? ' · times estimated' : '') + '</div>';
+      if (!S.transcript) {
+        html += '<div class="loadbox">Loading…</div>';
+      } else {
+        var segs = S.transcript.segments && S.transcript.segments.length ? S.transcript.segments : [{ start: 0, text: S.transcript.text }];
+        html += '<div class="seglist">' + segs.map(function (s, i) {
+          return '<div class="segline" data-seg="' + i + '"><button class="t" data-seek="' + (s.start || 0) + '">' +
+                 (S.transcript.estimated ? '~' : '') + clock(s.start || 0) + '</button><span>' + esc(s.text) + '</span></div>';
+        }).join('') + '</div>';
+        html += '<div class="actions"><button class="btn small" data-act="copy">Copy text</button></div>';
+      }
+    }
+    sheet.innerHTML = html;
+
+    var el = $('audio', sheet);
+    if (el) {
+      if (keepTime) el.currentTime = keepTime;
+      if (playing) el.play().catch(function () {});
+      el.addEventListener('timeupdate', follow);
+    }
+  }
+
+  function follow() {
+    var el = $('#sheet audio');
+    if (!el || !S.transcript) return;
+    var ms = el.currentTime * 1000, lines = $$('#sheet .segline'), segs = S.transcript.segments || [];
+    var now = 0;
+    segs.forEach(function (s, i) { if ((s.start || 0) <= ms) now = i; });
+    lines.forEach(function (l, i) {
+      var on = i === now && !el.paused;
+      if (on && !l.classList.contains('now')) l.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      l.classList.toggle('now', on);
+    });
+  }
+
+  $('#sheet').addEventListener('click', function (e) {
+    var r = rec(S.open);
+    if (!r) return;
+    var seek = e.target.closest('[data-seek]');
+    if (seek) {
+      var el = $('#sheet audio');
+      if (el) {
+        el.currentTime = +seek.getAttribute('data-seek') / 1000;
+        el.play().catch(function () {});
+      } else if (r.onWatch || r.onPhone) {
+        loadAudio(r);
+      }
+      return;
+    }
+    if (e.target.id === 'renameSave') {
+      var name = $('#renameField').value.trim();
+      S.renaming = false;
+      rpc({ type: 'rename', id: r.id, name: name }).then(function () { toast('Renamed'); }, function (err) { toast(err.message); });
+      r.name = name;
+      renderSheet();
+      renderRecordings();
+      return;
+    }
+    var b = e.target.closest('[data-act]');
+    if (!b) return;
+    var act = b.getAttribute('data-act');
+    if (act === 'load') loadAudio(r);
+    else if (act === 'export') exportAudio(r);
+    else if (act === 'save') rpc({ type: 'save', id: r.id }).catch(function (err) { toast(err.message); });
+    else if (act === 'upload') rpc({ type: 'upload', id: r.id }).catch(function (err) { toast(err.message); });
+    else if (act === 'transcribe') {
+      var lang = $('#trLang').value;
+      if (S.settings) S.settings.lastLang = lang;
+      renderSettings();
+      rpc({ type: 'transcribe', id: r.id, lang: lang }).catch(function (err) { toast(err.message); });
+    } else if (act === 'rename') {
+      S.renaming = true;
+      renderSheet();
+      var f = $('#renameField');
+      if (f) { f.focus(); f.select(); }
+    } else if (act === 'copy') {
+      var text = (S.transcript.segments || []).map(function (s) { return s.text; }).join(' ') || S.transcript.text;
+      (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject()).then(function () { toast('Copied'); }, function () { toast('Copying isn\'t allowed here'); });
+    } else if (act === 'delete') {
+      var opts = [];
+      if (r.onWatch && (r.onPhone || r.transcript)) opts.push({ label: 'Delete from watch', value: 'watch' });
+      if (r.onPhone || r.transcript) opts.push({ label: r.onWatch ? 'Delete from phone' : 'Delete', value: 'phone', danger: !r.onWatch });
+      if (r.onWatch && (r.onPhone || r.transcript)) opts.push({ label: 'Delete everywhere', value: 'all', danger: true });
+      if (!opts.length) opts.push({ label: 'Delete', value: 'watch', danger: true });
+      ask('Delete "' + title(r) + '"?', opts).then(function (where) {
+        if (!where) return;
+        if (where === 'all' || (where === 'phone' && !r.onWatch) || (where === 'watch' && !r.onPhone && !r.transcript)) closeSheet();
+        rpc({ type: 'delete', id: r.id, where: where }).then(function () { toast('Deleted'); }, function (err) { toast(err.message); });
+      });
+    }
+  });
+
+  // ---- Storage -----------------------------------------------------------------------------------
+  function renderStorage() {
+    var st = S.state;
+    if (!st) return;
+    var info = st.watch && st.watch.info;
+    if (info && info.capacity) {
+      var used = Math.min(info.capacity, info.used || 0);
+      var free = info.free != null ? info.free : info.capacity - used;
+      var secs = free / 268 * 505 / (S.settings && S.settings.quality ? 16000 : 8000);
+      $('#watchStore').textContent = size(free) + ' free of ' + size(info.capacity) + ' · about ' + clock(secs * 1000) + ' of recording';
+      $('#watchBar').style.width = (100 * used / info.capacity).toFixed(1) + '%';
+    } else {
+      $('#watchStore').textContent = st.watch && st.watch.connected ? 'Checking…' : 'Not connected';
+    }
+    var u = st.usage;
+    if (u) {
+      var rate = S.settings && S.settings.quality ? 8110 : 4055;
+      $('#phoneStore').textContent = size(u.usedBytes) + ' used · ' + size(u.freeBytes) + ' free · about ' + clock(u.freeBytes / rate * 1000) + ' of recording';
+      $('#phoneBar').style.width = (100 * u.usedChars / u.budgetChars).toFixed(1) + '%';
+    }
+  }
+
+  // ---- Settings form -----------------------------------------------------------------------------
+  function renderSettings() {
+    var s = S.settings;
+    if (!s) return;
+    $('#langSelect').innerHTML = langOptions(s.lastLang);
+    $$('[data-setting]').forEach(function (el) {
+      var key = el.getAttribute('data-setting'), v = get(s, key);
+      if (el.classList.contains('seg')) {
+        $$('button', el).forEach(function (b) { b.classList.toggle('on', String(v) === b.getAttribute('data-v')); });
+      } else if (el.type === 'checkbox') {
+        el.checked = !!v;
+      } else if (document.activeElement !== el) {
+        el.value = v == null ? '' : v;
+      }
+    });
+    var p = s.transcription.provider;
+    $('#openaiBox').classList.toggle('hidden', p !== 'openai');
+    $('#haBox').classList.toggle('hidden', p !== 'ha');
+    $('#qualityInfo').textContent = s.quality ? '16 kHz, about 2 minutes per MB' : '8 kHz, about 4 minutes per MB';
+    $('#targetInfo').textContent = s.target ? 'Streams to the phone; falls back to the watch if the phone drops' : 'Works without the phone';
+    var lang = S.languages.filter(function (l) { return l.code === s.lastLang; })[0];
+    $('#autoTrInfo').textContent = 'In ' + (lang ? lang.name : s.lastLang) + ', the last language you picked';
+  }
+
+  var saveTimer = null;
+  function saveSoon(delay) {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(function () {
+      rpc({ type: 'settings', settings: S.settings }).then(function (r) {
+        S.settings = r.settings;
+        if (S.state) S.state.caps = capsOf(S.settings);
+        renderSettings();
+        renderSheet();
+      }, function (err) { toast('Not saved: ' + err.message); });
+    }, delay == null ? 500 : delay);
+  }
+
+  function capsOf(s) {
+    var t = s.transcription, ready = t.provider === 'openai' ? !!(t.openai.baseUrl && t.openai.model)
+      : t.provider === 'ha' ? !!(t.ha.url && t.ha.token && t.ha.entity) : false;
+    return (ready ? 1 : 0) | (/^https?:\/\//i.test(s.webdav.url || '') ? 2 : 0);
+  }
+
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('.seg button');
+    if (!b || !S.settings) return;
+    var seg = b.parentNode, key = seg.getAttribute('data-setting'), raw = b.getAttribute('data-v');
+    set(S.settings, key, /^\d+$/.test(raw) ? +raw : raw);
+    renderSettings();
+    renderState();
+    saveSoon(0);
+  });
+
+  document.addEventListener('change', function (e) {
+    var el = e.target;
+    if (!el.hasAttribute || !el.hasAttribute('data-setting') || !S.settings) return;
+    var key = el.getAttribute('data-setting');
+    var v = el.type === 'checkbox' ? el.checked : el.type === 'number' ? Math.max(1, Math.min(500, +el.value || 5)) : el.value.trim();
+    if (key === 'transcription.ha.url' || key === 'transcription.ha.entity') S.settings.transcription.ha.languages = null;
+    set(S.settings, key, v);
+    renderSettings();
+    saveSoon(0);
+  });
+
+  document.addEventListener('input', function (e) {
+    var el = e.target;
+    if (!el.hasAttribute || !el.hasAttribute('data-setting') || el.type === 'checkbox' || !S.settings) return;
+    set(S.settings, el.getAttribute('data-setting'), el.type === 'number' ? (+el.value || 5) : el.value.trim());
+    saveSoon(900);
+  });
+
+  $$('[data-test]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var what = b.getAttribute('data-test'), out = b.parentNode.querySelector('.result');
+      var cfg = what === 'webdav' ? S.settings.webdav : S.settings.transcription[what];
+      out.className = 'result';
+      out.textContent = 'Testing…';
+      b.disabled = true;
+      rpc({ type: 'test', what: what, config: cfg }).then(function (r) {
+        out.className = 'result ok';
+        out.textContent = r.message;
+        if (what === 'ha' && r.languages) {
+          S.settings.transcription.ha.languages = r.languages;
+          saveSoon(0);
+        }
+      }, function (err) {
+        out.className = 'result err';
+        out.textContent = err.message;
+      }).then(function () { b.disabled = false; });
+    });
+  });
+
+  $('#done').addEventListener('click', function () {
+    var payload = encodeURIComponent(JSON.stringify({ settings: S.settings }));
+    document.location = 'pebblejs://close#' + (bridge ? '' : payload);
+  });
+
+  // ---- Start -------------------------------------------------------------------------------------
+  function start() {
+    if (S.started) return;
+    S.started = true;
+    rpc({ type: 'init' }).then(function (snap) {
+      apply(snap);
+      $('#banner').classList.remove('show');
+      var info = S.state.watch && S.state.watch.info;
+      renderSettings();
+      renderState();
+      renderRecordings();
+      if (info && info.features & 1) $('#watchName').textContent = 'Watch with speaker';
+    }, function (err) {
+      S.started = false;
+      offline(err.message);
+    });
+  }
+
+  function offline(why) {
+    var b = $('#banner');
+    b.innerHTML = '<b>Open Voice Recorder on your watch</b><br><span class="sub">Settings talk to the watch app while it runs. Open it, then come back here.' +
+                  (why ? ' (' + esc(why) + ')' : '') + '</span>';
+    b.classList.add('show');
+    $('#conn').innerHTML = '<span class="dot"></span><span>Waiting for the watch app</span>';
+  }
+
+  // Demo mode, when opened outside the Pebble app (for previewing the page).
+  var demo = {
+    handle: function (msg) {
+      var D = demo.data || (demo.data = demo.make());
+      if (msg.type === 'init' || msg.type === 'refresh') return Promise.resolve(JSON.parse(JSON.stringify({ ok: true, settings: D.settings, state: D.state, recordings: D.recordings, languages: D.languages })));
+      if (msg.type === 'settings') { D.settings = msg.settings; return Promise.resolve({ ok: true, settings: D.settings }); }
+      if (msg.type === 'transcript') return Promise.resolve({ ok: true, transcript: D.transcript });
+      if (msg.type === 'audio') {
+        var rate = 8000, n = rate * 4, bytes = new Uint8Array((Math.ceil(n / 505)) * 256);
+        return Promise.resolve({ ok: true, rate: 0, samples: n, b64: btoa(String.fromCharCode.apply(null, Array.prototype.slice.call(bytes))) });
+      }
+      if (msg.type === 'control') {
+        var r = D.state.recorder;
+        r.state = { start: 1, pause: 2, resume: 1, stop: 0, discard: 0 }[msg.action];
+        r.at = Date.now();
+        r.elapsed = r.state ? r.elapsed : 0;
+        r.health = 0; r.reason = r.state === 2 ? 8 : 1;
+        setTimeout(function () { onPush({ type: 'state', state: D.state }); }, 100);
+      }
+      if (msg.type === 'test') return Promise.resolve({ ok: true, message: 'Connected (demo)' });
+      return Promise.resolve({ ok: true });
+    },
+    make: function () {
+      var now = Math.floor(Date.now() / 1000);
+      return {
+        settings: { quality: 0, target: 0, quickLaunch: 1, lastLang: 'en', autoSave: 'off', autoTranscribe: true, autoUpload: false, phoneBudgetMB: 5,
+          transcription: { provider: 'openai', openai: { baseUrl: 'https://api.openai.com/v1', apiKey: '', model: 'whisper-1' }, ha: { url: '', token: '', entity: 'stt.faster_whisper' } },
+          webdav: { url: '', username: '', password: '', folder: 'Voice Recorder', uploadTranscript: true } },
+        state: { watch: { connected: true, info: { capacity: 1048576, used: 248000, free: 800576, features: 1 } }, recorder: { state: 0, elapsed: 0, at: Date.now() },
+          usage: { usedChars: 640000, budgetChars: 5242880, freeBytes: 3452160, usedBytes: 480000 }, caps: 3 },
+        recordings: [
+          { id: 1, created: now - 86400 * 2, samples: 8000 * 74, rate: 0, name: 'Groceries', onWatch: false, onPhone: true, phoneBytes: 150000, transcript: true, lang: 'en', uploaded: true },
+          { id: 2, created: now - 3600 * 5, samples: 16000 * 21, rate: 1, name: '', onWatch: true, watchBytes: 172000, onPhone: false, transcript: false, lost: 4 },
+          { id: 3, created: now - 600, samples: 8000 * 12, rate: 0, name: '', onWatch: true, watchBytes: 49000, onPhone: true, phoneBytes: 49000, transcript: true, lang: 'fr', job: { kind: 'upload', status: 'running', pct: 40 } }
+        ],
+        languages: [{ code: 'en', name: 'English' }, { code: 'ar', name: 'Arabic' }, { code: 'fr', name: 'French' }, { code: 'es', name: 'Spanish' }],
+        transcript: { lang: 'en', estimated: false, segments: [{ start: 0, text: 'Milk, eggs and the good bread from the corner shop.' }, { start: 4200, text: 'Call the plumber about the kitchen sink before Friday.' }] }
+      };
+    }
+  };
+
+  if (bridge) {
+    window.Pebble.addEventListener('message', function (e) { if (e.target === 'pkjs') onPush(e.data); });
+    window.Pebble.addEventListener('ready', function (e) { if (e.target === 'pkjs') start(); });
+    setTimeout(function () { if (!S.started) offline(); }, 5000);
+  } else {
+    start();
+  }
+})();
+</script>
+</body>
+</html>

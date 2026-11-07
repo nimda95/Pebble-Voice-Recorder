@@ -1,0 +1,146 @@
+{
+  "name": "voice-recorder",
+  "author": "Aymane Taibi",
+  "version": "1.0.0",
+  "keywords": [
+    "pebble-app",
+    "voice",
+    "recorder",
+    "microphone"
+  ],
+  "private": true,
+  "dependencies": {},
+  "pebble": {
+    "displayName": "Voice Recorder",
+    "uuid": "18d4f6e1-01bc-4f45-a893-7ca3674127df",
+    "sdkVersion": "3",
+    "enableMultiJS": true,
+    "targetPlatforms": [
+      "emery",
+      "flint",
+      "gabbro"
+    ],
+    "watchapp": {
+      "watchface": false
+    },
+    "capabilities": [
+      "configurable"
+    ],
+    "configPage": "src/config/index.html",
+    "usesPermissions": [
+      "WatchMicrophone",
+      "Internet",
+      "LocalNetwork"
+    ],
+    "messageKeys": [
+      "Cmd",
+      "Id",
+      "A",
+      "B",
+      "C",
+      "D",
+      "Data",
+      "Str"
+    ],
+    "resources": {
+      "media": [
+        {
+          "type": "bitmap",
+          "name": "APP_ICON",
+          "file": "images/app_icon.png",
+          "menuIcon": true
+        },
+        {
+          "type": "bitmap",
+          "name": "AB_RECORD",
+          "file": "images/ab_record.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "AB_PAUSE",
+          "file": "images/ab_pause.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "AB_STOP",
+          "file": "images/ab_stop.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "AB_PLAY",
+          "file": "images/ab_play.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "AB_REWIND",
+          "file": "images/ab_rewind.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "AB_FORWARD",
+          "file": "images/ab_forward.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "AB_TRASH",
+          "file": "images/ab_trash.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "AB_LIST",
+          "file": "images/ab_list.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "AB_SETTINGS",
+          "file": "images/ab_settings.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "AB_CHECK",
+          "file": "images/ab_check.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "AB_CROSS",
+          "file": "images/ab_cross.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "DLG_TRASH",
+          "file": "images/dlg_trash.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "DLG_CHECK",
+          "file": "images/dlg_check.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "DLG_WARNING",
+          "file": "images/dlg_warning.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "DLG_PHONE",
+          "file": "images/dlg_phone.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "DLG_MIC",
+          "file": "images/dlg_mic.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "MENU_CHECK_BLACK",
+          "file": "images/menu_check_black.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "MENU_CHECK_WHITE",
+          "file": "images/menu_check_white.png"
+        }
+      ]
+    }
+  }
+}

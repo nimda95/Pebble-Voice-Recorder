@@ -1,5 +1,5 @@
 // The recorder: the app opens straight to it.
-//   Standby:   Up = recordings, Select = record, Down = settings
+//   Standby:   Up = settings, Select = record, Down = recordings
 //   Recording: Up = stop & save, Select = pause, Down = discard (asks first)
 //   Paused:    Up = stop & save, Select = continue, Down = discard (asks first)
 #include "ui.h"
@@ -21,9 +21,9 @@ static GBitmap *s_icon_record, *s_icon_pause, *s_icon_stop, *s_icon_trash, *s_ic
     *s_icon_settings;
 
 static char s_timer_buf[12];
-static char s_health_buf[32];
-static char s_free_buf[48];
-static char s_left_buf[32];
+static char s_health_buf[48];
+static char s_free_buf[64];
+static char s_left_buf[40];
 
 static RecState s_shown_state = (RecState)0xff;
 static AppTimer *s_idle_timer;
@@ -32,6 +32,7 @@ static const char *s_flash;           // replaces the state line for a moment ("
 static uint32_t s_flash_elapsed;
 static bool s_resume_after_confirm;
 static bool s_hours_font;
+static GFont s_small_font;  // the font of the free and left lines
 
 static GFont prv_timer_font(bool hours) {
   if (hours) return fonts_get_system_font(BIG_SCREEN ? FONT_KEY_LECO_32_BOLD_NUMBERS
@@ -95,9 +96,9 @@ static bool prv_fits(const char *text, GFont font, int16_t width) {
 
 static void prv_update_action_bar(RecState state, bool animated) {
   if (state == RecIdle) {
-    action_bar_layer_set_icon_animated(s_action_bar, BUTTON_ID_UP, s_icon_list, animated);
+    action_bar_layer_set_icon_animated(s_action_bar, BUTTON_ID_UP, s_icon_settings, animated);
     action_bar_layer_set_icon_animated(s_action_bar, BUTTON_ID_SELECT, s_icon_record, animated);
-    action_bar_layer_set_icon_animated(s_action_bar, BUTTON_ID_DOWN, s_icon_settings, animated);
+    action_bar_layer_set_icon_animated(s_action_bar, BUTTON_ID_DOWN, s_icon_list, animated);
   } else {
     action_bar_layer_set_icon_animated(s_action_bar, BUTTON_ID_UP, s_icon_stop, animated);
     action_bar_layer_set_icon_animated(s_action_bar, BUTTON_ID_SELECT,
@@ -118,10 +119,10 @@ static void prv_update(void) {
   const char *label;
   GColor label_color = GColorBlack;
   switch (state) {
-    case RecRecording: label = "Recording"; label_color = ACCENT_COLOR; break;
-    case RecPaused: label = "Paused"; break;
-    case RecStarting: label = "Starting..."; label_color = ACCENT_COLOR; break;
-    default: label = s_flash ? s_flash : "Ready"; break;
+    case RecRecording: label = tr(S_RECORDING); label_color = ACCENT_COLOR; break;
+    case RecPaused: label = tr(S_PAUSED); break;
+    case RecStarting: label = tr(S_STARTING); label_color = ACCENT_COLOR; break;
+    default: label = s_flash ? s_flash : tr(S_READY); break;
   }
   text_layer_set_text(s_state_layer, label);
   text_layer_set_text_color(s_state_layer, label_color);
@@ -139,8 +140,8 @@ static void prv_update(void) {
   // Health (while recording) or where the next recording goes
   bool phone = recorder_uses_phone();
   if (state == RecIdle) {
-    const char *where = phone ? "Saving to phone"
-                      : g_settings.target == TargetPhone ? "Phone offline" : "Saving to watch";
+    const char *where = phone ? tr(S_SAVING_TO_PHONE)
+                      : g_settings.target == TargetPhone ? tr(S_PHONE_OFFLINE) : tr(S_SAVING_TO_WATCH);
     snprintf(s_health_buf, sizeof(s_health_buf), "%s", where);
     text_layer_set_text_color(s_health_layer, GColorBlack);
     text_layer_set_font(s_health_layer, fonts_get_system_font(BIG_SCREEN ? FONT_KEY_GOTHIC_24 : FONT_KEY_GOTHIC_18));
@@ -150,13 +151,13 @@ static void prv_update(void) {
     GFont bold = fonts_get_system_font(BIG_SCREEN ? FONT_KEY_GOTHIC_24_BOLD : FONT_KEY_GOTHIC_18_BOLD);
     GFont font = bold;
     if (reason == HrPaused) {
-      snprintf(s_health_buf, sizeof(s_health_buf), "Mic paused");
+      snprintf(s_health_buf, sizeof(s_health_buf), "%s", tr(S_MIC_PAUSED));
     } else {
       // "Health: Dropping audio" is too wide for most screens; the reason alone, in the
       // warning colour, says the same.
       const char *text = recorder_health_text(reason);
       int16_t w = layer_get_frame(text_layer_get_layer(s_health_layer)).size.w;
-      snprintf(s_health_buf, sizeof(s_health_buf), "Health: %s", text);
+      snprintf(s_health_buf, sizeof(s_health_buf), tr(S_HEALTH_FMT), text);
       if (!prv_fits(s_health_buf, bold, w)) {
         snprintf(s_health_buf, sizeof(s_health_buf), "%s", text);
         if (!prv_fits(s_health_buf, bold, w)) {
@@ -175,10 +176,14 @@ static void prv_update(void) {
   fmt_duration(left, sizeof(left), recorder_seconds_left());
   bool compact = layer_get_hidden(text_layer_get_layer(s_left_layer));
   if (compact) {
-    snprintf(s_free_buf, sizeof(s_free_buf), "%s, %s left", size, left);
+    snprintf(s_free_buf, sizeof(s_free_buf), tr(S_SIZE_LEFT_FMT), size, left);
+    // Some languages' wording doesn't fit the 144 px screen; the numbers alone still read.
+    if (!prv_fits(s_free_buf, s_small_font, layer_get_frame(text_layer_get_layer(s_free_layer)).size.w)) {
+      snprintf(s_free_buf, sizeof(s_free_buf), "%s, %s", size, left);
+    }
   } else {
-    snprintf(s_free_buf, sizeof(s_free_buf), "%s free%s", size, phone ? " on phone" : "");
-    snprintf(s_left_buf, sizeof(s_left_buf), "%s left", left);
+    snprintf(s_free_buf, sizeof(s_free_buf), tr(phone ? S_FREE_ON_PHONE_FMT : S_FREE_FMT), size);
+    snprintf(s_left_buf, sizeof(s_left_buf), tr(S_LEFT_FMT), left);
   }
   text_layer_set_text(s_free_layer, s_free_buf);
   text_layer_set_text(s_left_layer, s_left_buf);
@@ -227,21 +232,21 @@ static void prv_start(void) {
     return;
   }
   const char *err = recorder_error();
-  dialog_message(err ? err : "Couldn't start recording.", RESOURCE_ID_DLG_MIC, ACCENT_DARK, 5000);
+  dialog_message(err ? err : tr(S_ERR_START), RESOURCE_ID_DLG_MIC, ACCENT_DARK, 5000);
 }
 
 static void prv_save(void) {
   uint32_t elapsed = recorder_elapsed_ms();
   recorder_stop_save();
   vibes_short_pulse();
-  prv_flash("Saved", elapsed);
+  prv_flash(tr(S_SAVED), elapsed);
   prv_show_notice();
 }
 
 static void prv_discard_answer(bool confirmed, void *ctx) {
   if (confirmed) {
     recorder_discard();
-    prv_flash("Discarded", 0);
+    prv_flash(tr(S_DISCARDED), 0);
   } else if (s_resume_after_confirm) {
     recorder_resume();
   }
@@ -251,12 +256,12 @@ static void prv_discard_answer(bool confirmed, void *ctx) {
 static void prv_ask_discard(void) {
   s_resume_after_confirm = recorder_state() == RecRecording || recorder_state() == RecStarting;
   recorder_pause();
-  dialog_confirm("Discard this recording?", RESOURCE_ID_DLG_TRASH, ACCENT_COLOR,
+  dialog_confirm(tr(S_ASK_DISCARD), RESOURCE_ID_DLG_TRASH, ACCENT_COLOR,
                  prv_discard_answer, NULL);
 }
 
 static void prv_up(ClickRecognizerRef r, void *ctx) {
-  if (recorder_state() == RecIdle) ui_list_push();
+  if (recorder_state() == RecIdle) ui_settings_push();
   else prv_save();
 }
 
@@ -270,7 +275,7 @@ static void prv_select(ClickRecognizerRef r, void *ctx) {
 }
 
 static void prv_down(ClickRecognizerRef r, void *ctx) {
-  if (recorder_state() == RecIdle) ui_settings_push();
+  if (recorder_state() == RecIdle) ui_list_push();
   else prv_ask_discard();
 }
 
@@ -320,7 +325,8 @@ static void prv_load(Window *window) {
   s_state_layer = prv_text(root, fonts_get_system_font(BIG_SCREEN ? FONT_KEY_GOTHIC_28_BOLD : FONT_KEY_GOTHIC_24_BOLD));
   s_timer_layer = prv_text(root, prv_timer_font(false));
   s_health_layer = prv_text(root, fonts_get_system_font(BIG_SCREEN ? FONT_KEY_GOTHIC_24 : FONT_KEY_GOTHIC_18));
-  s_free_layer = prv_text(root, fonts_get_system_font(BIG_SCREEN ? FONT_KEY_GOTHIC_24 : FONT_KEY_GOTHIC_18));
+  s_small_font = fonts_get_system_font(BIG_SCREEN ? FONT_KEY_GOTHIC_24 : FONT_KEY_GOTHIC_18);
+  s_free_layer = prv_text(root, s_small_font);
   s_left_layer = prv_text(root, fonts_get_system_font(BIG_SCREEN ? FONT_KEY_GOTHIC_24 : FONT_KEY_GOTHIC_18));
 
   s_action_bar = action_bar_layer_create();

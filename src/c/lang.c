@@ -1,45 +1,26 @@
 #include "lang.h"
+#include "i18n.h"
 
-// Keep in sync with src/pkjs/languages.js.
+// Codes and English names; the other languages' names come with their translations (i18n.c).
+typedef struct {
+  const char *code;
+  const char *name;
+} Language;
+
 static const Language LANGS[] = {
-  { "en", "English" },
-  { "ar", "Arabic" },
-  { "fr", "French" },
-  { "es", "Spanish" },
-  { "de", "German" },
-  { "it", "Italian" },
-  { "pt", "Portuguese" },
-  { "nl", "Dutch" },
-  { "tr", "Turkish" },
-  { "ru", "Russian" },
-  { "uk", "Ukrainian" },
-  { "pl", "Polish" },
-  { "cs", "Czech" },
-  { "ro", "Romanian" },
-  { "hu", "Hungarian" },
-  { "el", "Greek" },
-  { "sv", "Swedish" },
-  { "da", "Danish" },
-  { "no", "Norwegian" },
-  { "fi", "Finnish" },
-  { "he", "Hebrew" },
-  { "fa", "Persian" },
-  { "hi", "Hindi" },
-  { "ur", "Urdu" },
-  { "id", "Indonesian" },
-  { "ms", "Malay" },
-  { "vi", "Vietnamese" },
-  { "th", "Thai" },
-  { "zh", "Chinese" },
-  { "ja", "Japanese" },
-  { "ko", "Korean" },
-  { "ca", "Catalan" },
+#define L(code, en, fr, de, es, it, pt) { code, en },
+#include "lang_names.def"
+#undef L
 };
 
 int lang_count(void) { return ARRAY_LENGTH(LANGS); }
 
-const Language *lang_get(int index) {
-  return (index >= 0 && index < lang_count()) ? &LANGS[index] : NULL;
+const char *lang_code(int index) {
+  return (index >= 0 && index < lang_count()) ? LANGS[index].code : NULL;
+}
+
+const char *lang_name(int index) {
+  return (index >= 0 && index < lang_count()) ? i18n_language_name(index, LANGS[index].name) : "";
 }
 
 int lang_index_of(const char *code) {

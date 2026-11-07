@@ -1,20 +1,31 @@
 // Voice Recorder phone companion: stores recordings on the phone, records straight to the phone,
-// runs transcription and WebDAV uploads, and serves the settings page over the live config bridge.
+// runs transcription, translation and WebDAV uploads, and serves the settings page over the live
+// config bridge. Messages go to the watch in its language and to the page in the page's.
 
 var P = require('./protocol');
 var codec = require('./codec');
 var store = require('./store');
 var services = require('./services');
 var LANGS = require('./languages');
+var i18n = require('./i18n');
+var E = i18n.error;
+var M = i18n.msg;
 
 var watch = {
   connected: false,
   info: null,                 // from W_HELLO
+  lang: 'en',                 // the watch app's language
   list: {},                   // id -> watch entry
   listing: null,              // list being received
   recorder: { state: 0, elapsed: 0, id: 0, mode: 0, health: 0, reason: 0, at: 0 }
 };
 var pageOpen = false;
+var pageLang = 'en';
+
+function langName(code) {
+  var l = LANGS.filter(function (x) { return x.code === code; })[0];
+  return l ? l.name : code;
+}
 
 // ---- Messaging to the watch ---------------------------------------------------------------------
 
@@ -41,7 +52,7 @@ function pump() {
     sending = false;
     if (++item.tries >= 4) {
       outbox.shift();
-      item.reject(new Error("The watch didn't answer"));
+      item.reject(E("The watch didn't answer"));
     }
     setTimeout(pump, 300 * item.tries);
   });
@@ -63,8 +74,15 @@ function arrayOf(u8) {
 
 function caps() {
   var s = store.getSettings();
+  var tl = services.translationMode(s);
   return (services.transcriptionReady(s.transcription) ? P.CAP_TRANSCRIBE : 0) |
-         (services.webdavReady(s.webdav) ? P.CAP_WEBDAV : 0);
+         (services.webdavReady(s.webdav) ? P.CAP_WEBDAV : 0) |
+         (tl === 'any' ? P.CAP_TRANSLATE : tl === 'en' ? P.CAP_TRANSLATE_EN : 0);
+}
+
+function settingsMessage(s) {
+  return { Cmd: P.P_SETTINGS, A: s.quality, B: s.target, C: s.quickLaunch ? 1 : 0, D: s.gain,
+           Str: s.lastLang + ' ' + s.lastTranslateLang };
 }
 
 var lastHello = 0;
@@ -73,7 +91,7 @@ function sendHello() {
   var u = store.usage();
   var s = store.getSettings();
   sendQuiet({ Cmd: P.P_HELLO, A: caps(), B: u.freeBytes, C: u.usedBytes, D: store.maxId() });
-  sendQuiet({ Cmd: P.P_SETTINGS, A: s.quality, B: s.target, C: s.quickLaunch ? 1 : 0, Str: s.lastLang });
+  sendQuiet(settingsMessage(s));
 }
 
 var storageTimer = null;
@@ -88,10 +106,11 @@ function sendStorage() {
 }
 
 function phoneFlags(m) {
-  return (m.audio ? P.REC_PHONE : 0) | (m.transcript ? P.REC_TRANSCRIPT : 0) | (m.uploaded ? P.REC_UPLOADED : 0);
+  return (m.audio ? P.REC_PHONE : 0) | (m.transcript ? P.REC_TRANSCRIPT : 0) | (m.uploaded ? P.REC_UPLOADED : 0) |
+         (m.translation ? P.REC_TRANSLATION : 0);
 }
 
-function listedOnPhone(m) { return m.audio || m.transcript || m.uploaded; }
+function listedOnPhone(m) { return m.audio || m.transcript || m.uploaded || m.translation; }
 
 function sendPhoneItem(m) {
   if (!m) return Promise.resolve();
@@ -143,13 +162,14 @@ function adoptWatchItem(item) {
 
 var jobs = [];
 var current = null;
-var KIND_CODE = { transcribe: P.JOB_TRANSCRIBE, upload: P.JOB_UPLOAD, save: P.JOB_SAVE };
+var KIND_CODE = { transcribe: P.JOB_TRANSCRIBE, upload: P.JOB_UPLOAD, save: P.JOB_SAVE, translate: P.JOB_TRANSLATE };
+var RUN = {};  // kind -> function(job), filled in below
 var STATUS_CODE = { queued: P.JOB_QUEUED, running: P.JOB_RUNNING, done: P.JOB_DONE, failed: P.JOB_FAILED };
 
 function enqueue(kind, id, opts) {
   var dup = function (j) { return j.kind === kind && j.id === id; };
   if (jobs.some(dup) || (current && dup(current))) return;
-  var job = { kind: kind, id: id, opts: opts || {}, status: 'queued', pct: 0, msg: '' };
+  var job = { kind: kind, id: id, opts: opts || {}, status: 'queued', pct: 0, msg: null };
   jobs.push(job);
   report(job);
   runJobs();
@@ -157,12 +177,12 @@ function enqueue(kind, id, opts) {
 
 function report(job) {
   sendQuiet({ Cmd: P.P_JOB, Id: job.id, A: KIND_CODE[job.kind], B: STATUS_CODE[job.status],
-              C: job.pct || 0, Str: (job.msg || '').slice(0, 90) });
+              C: job.pct || 0, Str: i18n.text(watch.lang, job.msg).slice(0, 90) });
   push({ type: 'job', job: jobView(job) });
 }
 
 function jobView(j) {
-  return { kind: j.kind, id: j.id, status: j.status, pct: j.pct, msg: j.msg };
+  return { kind: j.kind, id: j.id, status: j.status, pct: j.pct, msg: i18n.text(pageLang, j.msg) };
 }
 
 function progress(job, pct) {
@@ -183,7 +203,7 @@ function runJobs() {
   var job = current = jobs.shift();
   job.status = 'running';
   report(job);
-  var run = job.kind === 'save' ? doSave : job.kind === 'transcribe' ? doTranscribe : doUpload;
+  var run = RUN[job.kind];
   var p;
   try {
     p = run(job);
@@ -192,11 +212,11 @@ function runJobs() {
   }
   p.then(function (msg) {
     job.status = 'done';
-    job.msg = msg || '';
+    job.msg = msg || null;
   }, function (err) {
     job.status = 'failed';
-    job.msg = (err && err.message) || 'Something went wrong';
-    console.log('Job ' + job.kind + ' ' + job.id + ' failed: ' + job.msg);
+    job.msg = err && (err.template || err.message) ? err : M('Something went wrong');
+    console.log('Job ' + job.kind + ' ' + job.id + ' failed: ' + i18n.text('en', job.msg));
   }).then(function () {
     job.pct = 100;
     report(job);
@@ -237,8 +257,8 @@ function getAudio(id, job) {
   if (w && (w.flags & P.REC_LOCAL)) {
     return pull(id, function (pct) { progress(job, pct * (job && job.kind === 'save' ? 1 : 0.4)); });
   }
-  return Promise.reject(new Error(watch.connected ? 'The audio is no longer on the watch or the phone'
-                                                  : 'Open Voice Recorder on the watch to fetch the audio'));
+  return Promise.reject(E(watch.connected ? 'The audio is no longer on the watch or the phone'
+                                          : 'Open Voice Recorder on the watch to fetch the audio'));
 }
 
 function doSave(job) {
@@ -248,34 +268,86 @@ function doSave(job) {
       store.writeAll(job.id, a.bytes, { created: a.created || x.created, samples: a.samples, rate: a.rate,
                                          name: x.name, lost: x.lost, open: false });
     } catch (e) {
-      throw new Error(e.quota ? 'Phone storage is full' : (e.message || 'Couldn\'t store the recording'));
+      throw e.quota ? E('Phone storage is full') : (e.message ? e : E('Couldn\'t store the recording'));
     }
     sendPhoneItem(store.get(job.id));
     sendStorage();
     if (job.opts.move) sendQuiet({ Cmd: P.P_DELETE, Id: job.id });
-    return job.opts.move ? 'Moved to phone' : 'Saved to phone';
+    return M(job.opts.move ? 'Moved to phone' : 'Saved to phone');
   });
 }
 
-function doTranscribe(job) {
+// Transcribes a recording and stores the transcript. span: the share of the job's progress bar
+// this takes (translation runs it first when there's no transcript yet).
+function transcribeInto(job, lang, span) {
   var s = store.getSettings();
-  var lang = job.opts.lang || s.lastLang || 'en';
   return getAudio(job.id, job).then(function (a) {
     var pcm = codec.decodeBlocks(a.bytes, a.samples);
     var rate = codec.rateFor(a.rate);
     var base = job.pct || 0;
     return services.transcribe(pcm, rate, lang, s.transcription, function (pct) {
-      progress(job, base + (100 - base) * pct / 100);
+      progress(job, base + (span - base) * pct / 100);
     }).then(function (r) {
       ensurePhoneMeta(job.id);
-      store.saveTranscript(job.id, {
-        lang: lang, text: r.text, segments: r.segments, estimated: r.estimated,
-        provider: s.transcription.provider, at: Date.now()
-      });
+      var t = { lang: lang, text: r.text, segments: r.segments, estimated: r.estimated,
+                provider: s.transcription.provider, at: Date.now() };
+      store.saveTranscript(job.id, t);
       sendPhoneItem(store.get(job.id));
       sendStorage();
-      return r.text ? 'Transcribed' : 'No speech found';
+      return t;
     });
+  });
+}
+
+function doTranscribe(job) {
+  var lang = job.opts.lang || store.getSettings().lastLang || 'en';
+  return transcribeInto(job, lang, 100).then(function (t) {
+    return M(t.text ? 'Transcribed' : 'No speech found');
+  });
+}
+
+// Translates a recording: a chat model translates the transcript (made first if needed), keeping
+// its times; Whisper translates the audio into English.
+function doTranslate(job) {
+  var s = store.getSettings();
+  var mode = services.translationMode(s);
+  var target = mode === 'en' ? 'en' : (job.opts.lang || s.lastTranslateLang || 'en');
+  var done = function (segments, estimated, source) {
+    ensurePhoneMeta(job.id);
+    store.saveTranslation(job.id, {
+      lang: target, source: source || '', segments: segments, estimated: !!estimated,
+      text: segments.map(function (x) { return x.text; }).join(' '),
+      provider: s.translation.provider, at: Date.now()
+    });
+    sendPhoneItem(store.get(job.id));
+    sendStorage();
+    return segments.length ? M('Translated into {lang}', { lang: i18n.language(target) }) : M('No speech found');
+  };
+  if (mode === 'en') {
+    return getAudio(job.id, job).then(function (a) {
+      var pcm = codec.decodeBlocks(a.bytes, a.samples);
+      return services.translateWhisper(pcm, codec.rateFor(a.rate), s.transcription).then(function (r) {
+        return done(r.segments, r.estimated, '');
+      });
+    });
+  }
+  if (mode !== 'any') return Promise.reject(E('Set up translation in the phone settings'));
+  var existing = store.getTranscript(job.id);
+  var transcript;
+  if (existing) {
+    transcript = Promise.resolve(existing);
+  } else if (services.transcriptionReady(s.transcription)) {
+    transcript = transcribeInto(job, s.lastLang || 'en', 50);
+  } else {
+    return Promise.reject(E('Transcribe it first: set up transcription in the phone settings'));
+  }
+  return transcript.then(function (t) {
+    var segs = t.segments && t.segments.length ? t.segments : (t.text ? [{ start: 0, end: 0, text: t.text }] : []);
+    if (!segs.length) return done([], t.estimated, t.lang);
+    var base = job.pct || 0;
+    return services.translateSegments(segs, langName(target), t.lang ? langName(t.lang) : '', s.translation.chat,
+      function (pct) { progress(job, base + (100 - base) * pct / 100); })
+      .then(function (out) { return done(out, t.estimated, t.lang); });
   });
 }
 
@@ -299,7 +371,9 @@ function clock(ms) {
 }
 
 function transcriptText(x, t) {
-  var lines = [fileBase(x), 'Language: ' + t.lang + (t.estimated ? ' (times estimated)' : ''), ''];
+  var ui = pageLang || watch.lang;
+  var lines = [fileBase(x), i18n.t(ui, t.estimated ? 'Language: {lang} (times estimated)' : 'Language: {lang}',
+                                   { lang: i18n.language(t.lang) }), ''];
   (t.segments || []).forEach(function (seg) { lines.push('[' + clock(seg.start) + '] ' + seg.text); });
   if (!(t.segments || []).length) lines.push(t.text || '');
   return lines.join('\n') + '\n';
@@ -316,16 +390,26 @@ function doUpload(job) {
     if (t && s.webdav.uploadTranscript) {
       files.push({ name: base + '.txt', type: 'text/plain; charset=utf-8', bytes: codec.utf8(transcriptText(x, t)) });
     }
+    var tl = store.getTranslation(job.id);
+    if (tl && s.webdav.uploadTranscript) {
+      files.push({ name: base + ' (' + String(tl.lang).toUpperCase() + ').txt', type: 'text/plain; charset=utf-8',
+                   bytes: codec.utf8(transcriptText(x, tl)) });
+    }
     progress(job, 50);
     return services.uploadWebDAV(s.webdav, files).then(function () {
       var m = ensurePhoneMeta(job.id);
       m.uploaded = true;
       store.save();
       sendPhoneItem(m);
-      return 'Uploaded';
+      return M('Uploaded');
     });
   });
 }
+
+RUN.save = doSave;
+RUN.transcribe = doTranscribe;
+RUN.translate = doTranslate;
+RUN.upload = doUpload;
 
 function autoRules(id, source) {
   var s = store.getSettings();
@@ -364,7 +448,7 @@ function armPull(id) {
   if (!e) return;
   if (e.timer) clearTimeout(e.timer);
   e.timer = setTimeout(function () {
-    failPull(id, new Error('The watch stopped sending the recording'));
+    failPull(id, E('The watch stopped sending the recording'));
   }, 25000);
 }
 
@@ -402,7 +486,7 @@ function onPullEnd(id, blocks, samples, rate, created) {
 var stream = null;
 
 function newStream() {
-  return { id: 0, rate: 0, inputRate: 16000, created: 0, writer: null, enc: new codec.AdpcmEncoder(),
+  return { id: 0, rate: 0, gain: 256, inputRate: 16000, created: 0, writer: null, enc: new codec.AdpcmEncoder(),
            dec: new codec.Decimator(), encoded: 0, received: 0, paused: false, full: false,
            pending: [], stopTimer: null, statTimer: null };
 }
@@ -422,12 +506,13 @@ function stopTimers(s) {
   s.stopTimer = s.statTimer = null;
 }
 
-function beginStream(id, rateCode, created) {
+function beginStream(id, rateCode, created, gainStep) {
   if (stream && stream.id === id) return;
   if (stream && stream.id) finishStream(stream, 0);
   var s = stream && !stream.id ? stream : newStream();
   s.id = id;
   s.rate = rateCode;
+  s.gain = codec.gainQ8(gainStep);
   s.created = created;
   if (resolveConflict(id, created)) sendPhoneList();
   if (store.get(id)) store.remove(id);
@@ -465,8 +550,9 @@ function feed(s, pcm) {
   s.received += pcm.length;
   if (s.full) return;
   var decimate = s.rate === 0 && s.inputRate === 16000;
+  var gain = s.gain;
   for (var i = 0; i < pcm.length; i++) {
-    var v = pcm[i];
+    var v = gain === 256 ? pcm[i] : codec.applyGain(pcm[i], gain);
     if (decimate) {
       v = s.dec.push(v);
       if (v === null) continue;
@@ -551,7 +637,7 @@ function recoverOpen() {
 function servePlay(id, from, count) {
   var m = store.get(id);
   if (!m || !m.audio) {
-    sendQuiet({ Cmd: P.P_PLAY_ERR, Id: id, Str: 'This recording isn\'t on the phone.' });
+    sendQuiet({ Cmd: P.P_PLAY_ERR, Id: id, Str: i18n.t(watch.lang, 'This recording isn\'t on the phone.') });
     return;
   }
   var per = (watch.info && watch.info.inboxBlocks) || 8;
@@ -564,10 +650,10 @@ function servePlay(id, from, count) {
   }
 }
 
-function serveTranscript(id) {
-  var t = store.getTranscript(id);
+function serveTranscript(id, translation) {
+  var t = translation ? store.getTranslation(id) : store.getTranscript(id);
   if (!t) {
-    sendQuiet({ Cmd: P.P_TR_NONE, Id: id, Str: 'No transcript yet.' });
+    sendQuiet({ Cmd: P.P_TR_NONE, Id: id, Str: i18n.t(watch.lang, translation ? 'No translation yet.' : 'No transcript yet.') });
     return;
   }
   var segs = (t.segments && t.segments.length) ? t.segments : [{ start: 0, text: t.text || '' }];
@@ -592,7 +678,10 @@ function onAppMessage(e) {
   switch (p.Cmd) {
     case P.W_HELLO:
       watch.connected = true;
-      watch.info = { capacity: p.A >>> 0, used: p.B >>> 0, features: p.C || 0, inboxBlocks: p.D || 8, version: p.Str || '' };
+      var hello = String(p.Str || '').split(' ');
+      watch.lang = i18n.lang2(hello[1] || 'en');
+      watch.info = { capacity: p.A >>> 0, used: p.B >>> 0, features: p.C || 0, inboxBlocks: p.D || 8,
+                     version: hello[0] || '', lang: watch.lang };
       if (Date.now() - lastHello > 3000) sendHello();
       pushState();
       break;
@@ -629,11 +718,15 @@ function onAppMessage(e) {
       pushRecordings();
       break;
     }
-    case P.W_SETTINGS:
+    case P.W_SETTINGS: {
+      var langs = String(p.Str || '').split(' ');
+      var cur = store.getSettings();
       store.updateSettings({ quality: p.A || 0, target: p.B || 0, quickLaunch: p.C ? 1 : 0,
-                             lastLang: p.Str || store.getSettings().lastLang });
+                             gain: p.D != null && p.D >= 0 && p.D < P.GAIN_DB.length ? p.D : cur.gain,
+                             lastLang: langs[0] || cur.lastLang, lastTranslateLang: langs[1] || cur.lastTranslateLang });
       push({ type: 'settings', settings: store.getSettings() });
       break;
+    }
     case P.W_REC_STATE:
       watch.connected = true;
       watch.recorder = { state: p.A || 0, elapsed: p.B || 0, id: id, mode: p.C || 0,
@@ -641,7 +734,7 @@ function onAppMessage(e) {
       pushState();
       break;
     case P.W_REC_BEGIN:
-      beginStream(id, p.A || 0, p.B >>> 0);
+      beginStream(id, p.A || 0, p.B >>> 0, p.C != null ? p.C : P.GAIN_DEFAULT);
       pushRecordings();
       break;
     case P.W_REC_PAUSE:
@@ -667,13 +760,19 @@ function onAppMessage(e) {
       onPullEnd(id, p.A || 0, p.B >>> 0, p.C || 0, p.D >>> 0);
       break;
     case P.W_PULL_ERR:
-      failPull(id, new Error(p.A === 2 ? 'The watch ran out of memory' : 'The recording is no longer on the watch'));
+      failPull(id, E(p.A === 2 ? 'The watch ran out of memory' : 'The recording is no longer on the watch'));
       break;
     case P.W_ACTION:
       switch (p.A) {
         case P.ACT_TRANSCRIBE:
           if (p.Str) store.updateSettings({ lastLang: p.Str });
           enqueue('transcribe', id, { lang: p.Str || store.getSettings().lastLang });
+          break;
+        case P.ACT_TRANSLATE:
+          if (p.Str && services.translationMode(store.getSettings()) === 'any') {
+            store.updateSettings({ lastTranslateLang: p.Str });
+          }
+          enqueue('translate', id, { lang: p.Str || store.getSettings().lastTranslateLang });
           break;
         case P.ACT_UPLOAD: enqueue('upload', id); break;
         case P.ACT_SAVE: enqueue('save', id); break;
@@ -686,17 +785,17 @@ function onAppMessage(e) {
       }
       break;
     case P.W_TR_REQ:
-      serveTranscript(id);
+      serveTranscript(id, p.A === 1);
       break;
     case P.W_PLAY_REQ:
       servePlay(id, p.A || 0, p.B || 0);
       break;
     case P.W_DELETED: {
       var w = watch.list[id];
-      if (w && !(w.flags & P.REC_PHONE) && !(w.flags & P.REC_TRANSCRIPT)) delete watch.list[id];
+      if (w && !(w.flags & (P.REC_PHONE | P.REC_TRANSCRIPT | P.REC_TRANSLATION))) delete watch.list[id];
       else if (w) { w.flags &= ~P.REC_LOCAL; w.blocks = 0; }
       var m = store.get(id);
-      if (m && !m.audio && !m.transcript) store.remove(id);
+      if (m && !m.audio && !m.transcript && !m.translation) store.remove(id);
       if (pageOpen) sendQuiet({ Cmd: P.P_LIST_REQ });
       pushRecordings();
       break;
@@ -741,7 +840,8 @@ function recordingsView() {
     map[w.id] = {
       id: w.id, created: w.created, samples: w.samples, rate: w.rate, name: w.name, lost: w.lost,
       onWatch: !!(w.flags & P.REC_LOCAL), open: !!(w.flags & P.REC_OPEN), watchBytes: w.blocks * codec.BLOCK_BYTES,
-      onPhone: false, phoneBytes: 0, transcript: !!(w.flags & P.REC_TRANSCRIPT), uploaded: !!(w.flags & P.REC_UPLOADED)
+      onPhone: false, phoneBytes: 0, transcript: !!(w.flags & P.REC_TRANSCRIPT), uploaded: !!(w.flags & P.REC_UPLOADED),
+      translation: !!(w.flags & P.REC_TRANSLATION)
     };
   });
   store.all().forEach(function (m) {
@@ -750,6 +850,8 @@ function recordingsView() {
     r.onPhone = !!m.audio;
     r.phoneBytes = (m.blocks || 0) * codec.BLOCK_BYTES;
     r.transcript = !!m.transcript;
+    r.translation = !!m.translation;
+    if (m.translation) r.xlang = m.xlang;
     r.uploaded = !!m.uploaded;
     r.open = r.open || !!m.open;
     if (m.name) r.name = m.name;
@@ -765,7 +867,7 @@ function recordingsView() {
   }
   jobs.forEach(function (j) { if (map[j.id] && !map[j.id].job) map[j.id].job = jobView(j); });
   return Object.keys(map).map(function (k) { return map[k]; })
-    .filter(function (r) { return r.onWatch || r.onPhone || r.transcript || r.open; })
+    .filter(function (r) { return r.onWatch || r.onPhone || r.transcript || r.translation || r.open; })
     .sort(function (a, b) { return a.created - b.created || a.id - b.id; });
 }
 
@@ -792,6 +894,7 @@ function handlePage(msg) {
   switch (msg.type) {
     case 'init':
       pageOpen = true;
+      if (msg.lang) pageLang = i18n.lang2(msg.lang);
       if (watch.connected) sendQuiet({ Cmd: P.P_LIST_REQ });
       return Promise.resolve(snapshot());
 
@@ -801,7 +904,7 @@ function handlePage(msg) {
     case 'control':
       if (!CONTROL[msg.action]) return Promise.reject(new Error('Unknown action'));
       return send({ Cmd: P.P_CONTROL, A: CONTROL[msg.action] }).then(function () { return { ok: true }; }, function () {
-        throw new Error('Open Voice Recorder on the watch first');
+        throw E('Open Voice Recorder on the watch first');
       });
 
     case 'rename': {
@@ -835,6 +938,17 @@ function handlePage(msg) {
       enqueue('transcribe', msg.id, { lang: msg.lang || store.getSettings().lastLang });
       return Promise.resolve({ ok: true });
 
+    case 'translate':
+      if (msg.lang) {
+        store.updateSettings({ lastTranslateLang: msg.lang });
+        sendHello();
+      }
+      enqueue('translate', msg.id, { lang: msg.lang || store.getSettings().lastTranslateLang });
+      return Promise.resolve({ ok: true });
+
+    case 'translation':
+      return Promise.resolve({ ok: true, translation: store.getTranslation(msg.id) });
+
     case 'upload':
       enqueue('upload', msg.id);
       return Promise.resolve({ ok: true });
@@ -848,7 +962,7 @@ function handlePage(msg) {
       pull(msg.id, function (pct) { push({ type: 'audioProgress', id: msg.id, pct: Math.round(pct) }); }).then(function (a) {
         push({ type: 'audio', id: msg.id, ok: true, rate: a.rate, samples: a.samples, b64: codec.toBase64(a.bytes) });
       }, function (err) {
-        push({ type: 'audio', id: msg.id, ok: false, error: err.message });
+        push({ type: 'audio', id: msg.id, ok: false, error: i18n.text(pageLang, err) });
       });
       return Promise.resolve({ ok: true, pending: true });
     }
@@ -860,10 +974,12 @@ function handlePage(msg) {
       var cfg = msg.config || {};
       var p = msg.what === 'openai' ? services.testOpenAI(cfg)
             : msg.what === 'ha' ? services.testHA(cfg)
+            : msg.what === 'chat' ? services.testChat(cfg)
             : msg.what === 'webdav' ? services.testWebDAV(cfg)
             : Promise.reject(new Error('Nothing to test'));
       return p.then(function (r) {
-        return typeof r === 'string' ? { ok: true, message: r } : { ok: true, message: r.message, languages: r.languages };
+        return r.template ? { ok: true, message: i18n.text(pageLang, r) }
+                          : { ok: true, message: i18n.text(pageLang, r.message), languages: r.languages };
       });
     }
 
@@ -879,18 +995,46 @@ Pebble.addEventListener('configmessage', function (e) {
   handlePage(msg).then(function (r) {
     e.respond(r || { ok: true });
   }, function (err) {
-    e.respond({ ok: false, error: (err && err.message) || 'Something went wrong' });
+    e.respond({ ok: false, error: err ? i18n.text(pageLang, err) : i18n.t(pageLang, 'Something went wrong') });
   });
+});
+
+// The classic settings flow. The Pebble app opens the bundled page (configPage) itself when its
+// plugins / permissions preview is on; otherwise it fires this, and the same page opens as a
+// data: URL with the settings in its fragment. It can't talk to this script while it's open, so it
+// edits settings only and returns them when closed.
+// Keeps only one language's page translations, so the data: URL stays small (about half).
+function pageForLanguage(page, lang) {
+  return page.replace(/(\/\/ I18N-BEGIN\nwindow\.I18N = )([\s\S]*?)(;\n\/\/ I18N-END)/, function (all, head, json, tail) {
+    try {
+      var all18n = JSON.parse(json), one = {};
+      if (all18n[lang]) one[lang] = all18n[lang];
+      return head + JSON.stringify(one) + tail;
+    } catch (e) {
+      return all;
+    }
+  });
+}
+
+Pebble.addEventListener('showConfiguration', function () {
+  var phoneLang = typeof navigator !== 'undefined' && navigator.language ? navigator.language : watch.lang;
+  var page = pageForLanguage(require('./config_page'), i18n.lang2(phoneLang));
+  var data = { classic: true, settings: store.getSettings(), state: stateView(), languages: LANGS };
+  Pebble.openURL('data:text/html;charset=utf-8,' + encodeURIComponent(page) + '#' +
+                 encodeURIComponent(JSON.stringify(data)));
 });
 
 Pebble.addEventListener('webviewclosed', function (e) {
   pageOpen = false;
-  // Fallback for phone apps without the live bridge: the page returns its settings on close.
+  // The classic flow (and phone apps without the live bridge): the page returns its settings on close.
   if (e && e.response) {
-    try {
-      var data = JSON.parse(decodeURIComponent(e.response));
-      if (data && data.settings) cleanSettings(data.settings);
-    } catch (err) { /* nothing to apply */ }
+    // The Pebble app percent-decodes the data once already; decoding it again would mangle any
+    // "%" in a password or key. Older apps passed it still encoded, so fall back to that.
+    var data = null;
+    try { data = JSON.parse(e.response); } catch (err) {
+      try { data = JSON.parse(decodeURIComponent(e.response)); } catch (err2) { data = null; }
+    }
+    if (data && data.settings) cleanSettings(data.settings);
   }
 });
 

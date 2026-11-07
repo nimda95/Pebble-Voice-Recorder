@@ -174,13 +174,15 @@ footer .sub { margin-top: 10px; }
   <div class="rec-actions" id="recActions"></div>
 </section>
 
-<h2>Recordings</h2>
+<h2 id="recsHead">Recordings</h2>
 <section class="group" id="recs"><div class="empty">No recordings yet</div></section>
 
 <h2>Recording</h2>
 <section class="group">
   <div class="row"><div class="label">Quality<small id="qualityInfo">8 kHz, about 4 minutes per MB</small></div>
     <div class="seg" data-setting="quality"><button data-v="0">Standard</button><button data-v="1">High</button></div></div>
+  <div class="row stack"><div class="label">Mic gain<small id="gainInfo">No boost</small></div>
+    <div class="seg wide" data-setting="gain"><button data-v="0">-6 dB</button><button data-v="1">0 dB</button><button data-v="2">+6 dB</button><button data-v="3">+12 dB</button><button data-v="4">+18 dB</button></div></div>
   <div class="row"><div class="label">Save to<small id="targetInfo">Works without the phone</small></div>
     <div class="seg" data-setting="target"><button data-v="0">Watch</button><button data-v="1">Phone</button></div></div>
   <div class="row"><div class="label">Record on Quick Launch<small>Start recording straight away when opened with Quick Launch</small></div>
@@ -231,6 +233,24 @@ footer .sub { margin-top: 10px; }
     <select class="field" style="width:auto" data-setting="lastLang" id="langSelect"></select></div>
 </section>
 
+<h2>Translation</h2>
+<section class="group">
+  <div class="row stack"><div class="label">Service</div>
+    <div class="seg wide" data-setting="translation.provider"><button data-v="none">Off</button><button data-v="chat">Chat model</button><button data-v="whisper">Whisper, into English</button></div></div>
+  <div class="row stack" id="chatBox">
+    <div class="fields">
+      <label>Endpoint<input class="field" type="url" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="https://api.openai.com/v1" data-setting="translation.chat.baseUrl"></label>
+      <label>API key<input class="field" type="password" autocomplete="off" placeholder="Leave empty if your server needs none" data-setting="translation.chat.apiKey"></label>
+      <label>Model<input class="field" type="text" autocapitalize="off" spellcheck="false" placeholder="gpt-4o-mini" data-setting="translation.chat.model"></label>
+    </div>
+    <div class="hint">Any OpenAI-compatible chat model (OpenAI, Ollama, LM Studio, LocalAI, Groq). It translates the transcript line by line, so the translation keeps the timestamps. Recordings without a transcript are transcribed first.</div>
+    <div class="test"><button class="btn small" data-test="chat">Test</button><span class="result"></span></div>
+  </div>
+  <div class="row stack" id="whisperBox"><div class="hint" id="whisperHint">Uses the OpenAI-compatible transcription service above to translate the audio. Whisper translates into English only.</div></div>
+  <div class="row" id="tlLangRow"><div class="label">Translate into<small>Used when you translate from the phone; the watch remembers your last pick too</small></div>
+    <select class="field" style="width:auto" data-setting="lastTranslateLang" id="tlLangSelect"></select></div>
+</section>
+
 <h2>WebDAV</h2>
 <section class="group">
   <div class="row stack">
@@ -242,13 +262,13 @@ footer .sub { margin-top: 10px; }
     </div>
     <div class="test"><button class="btn small" data-test="webdav">Test</button><span class="result"></span></div>
   </div>
-  <div class="row"><div class="label">Upload the transcript too<small>As a .txt next to the audio, with timestamps</small></div>
+  <div class="row"><div class="label">Upload the transcript too<small>As a .txt next to the audio, with timestamps (and the translation, if there is one)</small></div>
     <label class="switch"><input type="checkbox" data-setting="webdav.uploadTranscript"><span></span></label></div>
 </section>
 
 <footer>
   <button class="btn big primary" id="done">Done</button>
-  <div class="sub">Changes save as you make them.</div>
+  <div class="sub" id="saveNote">Changes save as you make them.</div>
 </footer>
 
 <div class="scrim" id="scrim"></div>
@@ -256,6 +276,774 @@ footer .sub { margin-top: 10px; }
 <div class="dialog" id="dialog"><div class="box"><p id="dialogText"></p><div class="opts" id="dialogOpts"></div></div></div>
 <div class="toast" id="toast"></div>
 
+<script>
+// Translations of the page, keyed by the English text. Generated from src/config/i18n/*.json by
+// tools/build_page_i18n.py; edit those files, not this block.
+// I18N-BEGIN
+window.I18N = {
+ "de": {
+  "Voice Recorder": "Voice Recorder",
+  "Connecting": "Verbindet …",
+  "Ready": "Bereit",
+  "Saving to watch": "Speichern auf der Uhr",
+  "Recordings": "Aufnahmen",
+  "No recordings yet": "Noch keine Aufnahmen",
+  "Recording": "Aufnahme",
+  "Quality": "Qualität",
+  "8 kHz, about 4 minutes per MB": "8 kHz, etwa 4 Minuten pro MB",
+  "16 kHz, about 2 minutes per MB": "16 kHz, etwa 2 Minuten pro MB",
+  "Standard": "Standard",
+  "High": "Hoch",
+  "Mic gain": "Mikrofonpegel",
+  "No boost": "Ohne Anhebung",
+  "Save to": "Speichern auf",
+  "Works without the phone": "Funktioniert ohne Handy",
+  "Watch": "Uhr",
+  "Phone": "Handy",
+  "Record on Quick Launch": "Bei Schnellstart aufnehmen",
+  "Start recording straight away when opened with Quick Launch": "Sofort aufnehmen, wenn die App per Schnellstart geöffnet wird",
+  "After each recording": "Nach jeder Aufnahme",
+  "Save to phone": "Aufs Handy speichern",
+  "Copy keeps it on the watch too; Move frees watch space": "„Kopieren“ behält sie auch auf der Uhr; „Verschieben“ schafft Platz auf der Uhr",
+  "Off": "Aus",
+  "Copy": "Kopieren",
+  "Move": "Verschieben",
+  "Transcribe": "Transkribieren",
+  "In the last language you picked": "In der zuletzt gewählten Sprache",
+  "Upload to WebDAV": "Auf WebDAV hochladen",
+  "Storage": "Speicher",
+  "Not connected": "Nicht verbunden",
+  "0 KB used": "0 KB belegt",
+  "Phone storage limit": "Speicherlimit auf dem Handy",
+  "How much of the Pebble app's storage recordings may use": "Wie viel vom Speicher der Pebble-App Aufnahmen belegen dürfen",
+  "Transcription": "Transkription",
+  "Service": "Dienst",
+  "OpenAI-compatible": "OpenAI-kompatibel",
+  "Wyoming (HA)": "Wyoming (HA)",
+  "Endpoint": "Endpunkt",
+  "API key": "API-Schlüssel",
+  "Model": "Modell",
+  "Works with OpenAI and compatible servers (faster-whisper-server / Speaches, LocalAI, whisper.cpp, Groq). Models that return segments (such as whisper-1) give real timestamps; others are spread over the recording.": "Funktioniert mit OpenAI und kompatiblen Servern (faster-whisper-server / Speaches, LocalAI, whisper.cpp, Groq). Modelle, die Segmente liefern (etwa whisper-1), ergeben echte Zeitstempel; bei anderen werden sie über die Aufnahme verteilt.",
+  "Test": "Testen",
+  "Home Assistant address": "Home-Assistant-Adresse",
+  "Long-lived access token": "Langlebiges Zugriffstoken",
+  "Speech-to-text entity": "Sprache-zu-Text-Entität",
+  "Phones can't open Wyoming's raw TCP port, so this goes through Home Assistant's speech-to-text API, which fronts your Wyoming faster-whisper. Audio is split at pauses, so each line gets its real start time.": "Handys können den rohen TCP-Port von Wyoming nicht öffnen. Daher läuft das über die Sprache-zu-Text-API von Home Assistant, die deinem Wyoming faster-whisper vorgeschaltet ist. Das Audio wird an Pausen geteilt, so bekommt jede Zeile ihre echte Startzeit.",
+  "Language": "Sprache",
+  "Used when you transcribe from the phone; the watch remembers your last pick too": "Gilt beim Transkribieren vom Handy aus; die Uhr merkt sich deine letzte Wahl ebenfalls",
+  "Translation": "Übersetzung",
+  "Chat model": "Chat-Modell",
+  "Whisper, into English": "Whisper, ins Englische",
+  "Any OpenAI-compatible chat model (OpenAI, Ollama, LM Studio, LocalAI, Groq). It translates the transcript line by line, so the translation keeps the timestamps. Recordings without a transcript are transcribed first.": "Jedes OpenAI-kompatible Chat-Modell (OpenAI, Ollama, LM Studio, LocalAI, Groq). Es übersetzt das Transkript Zeile für Zeile, sodass die Übersetzung die Zeitstempel behält. Aufnahmen ohne Transkript werden zuerst transkribiert.",
+  "Uses the OpenAI-compatible transcription service above to translate the audio. Whisper translates into English only.": "Nutzt den OpenAI-kompatiblen Transkriptionsdienst oben, um das Audio zu übersetzen. Whisper übersetzt nur ins Englische.",
+  "Translate into": "Zielsprache",
+  "Used when you translate from the phone; the watch remembers your last pick too": "Gilt beim Übersetzen vom Handy aus; die Uhr merkt sich deine letzte Wahl ebenfalls",
+  "WebDAV": "WebDAV",
+  "Server address": "Serveradresse",
+  "Username": "Benutzername",
+  "Password": "Passwort",
+  "Folder": "Ordner",
+  "Upload the transcript too": "Transkript mit hochladen",
+  "As a .txt next to the audio, with timestamps (and the translation, if there is one)": "Als .txt neben dem Audio, mit Zeitstempeln (und der Übersetzung, falls vorhanden)",
+  "Done": "Fertig",
+  "Changes save as you make them.": "Änderungen werden sofort gespeichert.",
+  "Leave empty if your server needs none": "Leer lassen, wenn dein Server keinen braucht",
+  "Today": "Heute",
+  "Cancel": "Abbrechen",
+  "No answer": "Keine Antwort",
+  "Upload": "Upload",
+  "Saving to phone": "Speichern aufs Handy",
+  "{name} done": "{name} fertig",
+  "{name} failed: {msg}": "{name} fehlgeschlagen: {msg}",
+  "Good": "Gut",
+  "Slow storage": "Speicher langsam",
+  "Storage low": "Speicher knapp",
+  "Dropping audio": "Audio-Aussetzer",
+  "Phone lagging": "Handy langsam",
+  "Phone silent": "Handy schweigt",
+  "Mic paused": "Mikrofon pausiert",
+  "Watch connected": "Uhr verbunden",
+  "Watch not connected": "Uhr nicht verbunden",
+  "Paused": "Pausiert",
+  "Starting": "Startet …",
+  "Health: {reason}": "Status: {reason}",
+  "Recording to the phone": "Aufnahme aufs Handy",
+  "Recording on the watch": "Aufnahme auf der Uhr",
+  "Record on watch": "Auf der Uhr aufnehmen",
+  "Resume": "Fortsetzen",
+  "Pause": "Pausieren",
+  "Stop & save": "Stoppen & speichern",
+  "Discard": "Verwerfen",
+  "Discard this recording?": "Diese Aufnahme verwerfen?",
+  "Text": "Text",
+  "Translated": "Übersetzt",
+  "Uploaded": "Hochgeladen",
+  "{n} s lost": "{n} s verloren",
+  "Transcribing": "Transkribieren",
+  "Translating": "Übersetzen",
+  "Uploading": "Hochladen",
+  "{what} (waiting)": "{what} (wartet)",
+  "Couldn't decode the audio": "Audio konnte nicht dekodiert werden",
+  "If no download started, the Pebble app blocks downloads here. WebDAV upload works instead.": "Falls kein Download gestartet ist, blockiert die Pebble-App hier Downloads. Der WebDAV-Upload funktioniert stattdessen.",
+  "Save": "Speichern",
+  "Loading audio…": "Audio wird geladen …",
+  "Fetching from the watch… {pct}%": "Wird von der Uhr geholt … {pct}%",
+  "Play": "Abspielen",
+  "Play from watch": "Von der Uhr abspielen",
+  "Export .wav": ".wav exportieren",
+  "Upload again": "Neu hochladen",
+  "Rename": "Umbenennen",
+  "Delete": "Löschen",
+  "Again": "Erneut",
+  "Translate": "Übersetzen",
+  "Translate to English": "Ins Englische übersetzen",
+  "Transcript": "Transkript",
+  "Loading…": "Wird geladen …",
+  "Copy text": "Text kopieren",
+  "Copied": "Kopiert",
+  "Copying isn't allowed here": "Kopieren ist hier nicht erlaubt",
+  "Renamed": "Umbenannt",
+  "Delete from watch": "Von der Uhr löschen",
+  "Delete from phone": "Vom Handy löschen",
+  "Delete everywhere": "Überall löschen",
+  "Delete \"{title}\"?": "„{title}“ löschen?",
+  "Deleted": "Gelöscht",
+  "{free} free of {total} · about {time} of recording": "{free} von {total} frei · etwa {time} Aufnahmezeit",
+  "Checking…": "Wird geprüft …",
+  "{used} used · {free} free · about {time} of recording": "{used} belegt · {free} frei · etwa {time} Aufnahmezeit",
+  "Choose OpenAI-compatible under Transcription first: Whisper translation uses that service.": "Wähle zuerst „OpenAI-kompatibel“ unter Transkription: Die Whisper-Übersetzung nutzt diesen Dienst.",
+  "For loud places": "Für laute Orte",
+  "For quiet voices": "Für leise Stimmen",
+  "From further away": "Für mehr Abstand",
+  "Very quiet; may hiss": "Sehr leise; kann rauschen",
+  "Streams to the phone; falls back to the watch if the phone drops": "Streamt aufs Handy; wechselt zur Uhr, wenn das Handy ausfällt",
+  "In {lang}, the last language you picked": "Auf {lang}, der zuletzt gewählten Sprache",
+  "Not saved: {msg}": "Nicht gespeichert: {msg}",
+  "Testing…": "Wird getestet …",
+  "Watch with speaker": "Uhr mit Lautsprecher",
+  "Open Voice Recorder on your watch": "Öffne Voice Recorder auf deiner Uhr",
+  "Settings talk to the watch app while it runs. Open it, then come back here.": "Die Einstellungen sprechen mit der Uhr-App, solange sie läuft. Öffne sie und komm dann hierher zurück.",
+  "Waiting for the watch app": "Warten auf die Uhr-App",
+  "state|Recording": "Aufnahme läuft",
+  "state|Paused": "Pausiert",
+  "state|Starting": "Startet …",
+  "state|Ready": "Bereit",
+  "Turn on the plugins / permissions preview in the Pebble app to do this.": "Schalte dafür in der Pebble-App „Plugins / permissions preview“ ein.",
+  "Live settings are off": "Live-Einstellungen sind aus",
+  "To control the recorder and manage recordings here, and for Voice Recorder to use the microphone, turn on Settings → Plugins → Plugins / permissions preview in the Pebble app. You can still change the settings below.": "Um den Rekorder zu steuern und Aufnahmen hier zu verwalten, und damit Voice Recorder das Mikrofon nutzen kann, schalte in der Pebble-App Settings → Plugins → Plugins / permissions preview ein. Die Einstellungen unten kannst du trotzdem ändern.",
+  "Changes are saved when you tap Done.": "Änderungen werden gespeichert, wenn du auf Fertig tippst."
+ },
+ "es": {
+  "Voice Recorder": "Voice Recorder",
+  "Connecting": "Conectando",
+  "Ready": "Listo",
+  "Saving to watch": "Guardando en el reloj",
+  "Recordings": "Grabaciones",
+  "No recordings yet": "Aún no hay grabaciones",
+  "Recording": "Grabación",
+  "Quality": "Calidad",
+  "8 kHz, about 4 minutes per MB": "8 kHz, unos 4 minutos por MB",
+  "16 kHz, about 2 minutes per MB": "16 kHz, unos 2 minutos por MB",
+  "Standard": "Estándar",
+  "High": "Alta",
+  "Mic gain": "Ganancia del micro",
+  "No boost": "Sin amplificar",
+  "Save to": "Guardar en",
+  "Works without the phone": "Funciona sin el teléfono",
+  "Watch": "Reloj",
+  "Phone": "Teléfono",
+  "Record on Quick Launch": "Grabar con Inicio rápido",
+  "Start recording straight away when opened with Quick Launch": "Empieza a grabar en cuanto se abre con Inicio rápido",
+  "After each recording": "Después de cada grabación",
+  "Save to phone": "Guardar en teléfono",
+  "Copy keeps it on the watch too; Move frees watch space": "Copiar mantiene la grabación también en el reloj; Mover libera espacio en el reloj",
+  "Off": "Desactivado",
+  "Copy": "Copiar",
+  "Move": "Mover",
+  "Transcribe": "Transcribir",
+  "In the last language you picked": "En el último idioma que elegiste",
+  "Upload to WebDAV": "Subir a WebDAV",
+  "Storage": "Almacenamiento",
+  "Not connected": "Sin conexión",
+  "0 KB used": "0 KB usados",
+  "Phone storage limit": "Límite de espacio en el teléfono",
+  "How much of the Pebble app's storage recordings may use": "Cuánto espacio de la app Pebble pueden ocupar las grabaciones",
+  "Transcription": "Transcripción",
+  "Service": "Servicio",
+  "OpenAI-compatible": "Compatible con OpenAI",
+  "Wyoming (HA)": "Wyoming (HA)",
+  "Endpoint": "Endpoint",
+  "API key": "Clave de API",
+  "Model": "Modelo",
+  "Works with OpenAI and compatible servers (faster-whisper-server / Speaches, LocalAI, whisper.cpp, Groq). Models that return segments (such as whisper-1) give real timestamps; others are spread over the recording.": "Funciona con OpenAI y servidores compatibles (faster-whisper-server / Speaches, LocalAI, whisper.cpp, Groq). Los modelos que devuelven segmentos (como whisper-1) dan marcas de tiempo reales; con los demás, el texto se reparte a lo largo de la grabación.",
+  "Test": "Probar",
+  "Home Assistant address": "Dirección de Home Assistant",
+  "Long-lived access token": "Token de acceso de larga duración",
+  "Speech-to-text entity": "Entidad de voz a texto",
+  "Phones can't open Wyoming's raw TCP port, so this goes through Home Assistant's speech-to-text API, which fronts your Wyoming faster-whisper. Audio is split at pauses, so each line gets its real start time.": "Los teléfonos no pueden conectarse directamente al puerto TCP de Wyoming, así que esto pasa por la API de voz a texto de Home Assistant, que hace de intermediaria con tu Wyoming faster-whisper. El audio se divide en las pausas, así que cada línea recibe su marca de tiempo real.",
+  "Language": "Idioma",
+  "Used when you transcribe from the phone; the watch remembers your last pick too": "Se usa al transcribir desde el teléfono; el reloj también recuerda tu última elección",
+  "Translation": "Traducción",
+  "Chat model": "Modelo de chat",
+  "Whisper, into English": "Whisper, al inglés",
+  "Any OpenAI-compatible chat model (OpenAI, Ollama, LM Studio, LocalAI, Groq). It translates the transcript line by line, so the translation keeps the timestamps. Recordings without a transcript are transcribed first.": "Cualquier modelo de chat compatible con OpenAI (OpenAI, Ollama, LM Studio, LocalAI, Groq). Traduce la transcripción línea a línea, así que la traducción conserva las marcas de tiempo. Las grabaciones sin transcripción se transcriben primero.",
+  "Uses the OpenAI-compatible transcription service above to translate the audio. Whisper translates into English only.": "Usa el servicio de transcripción compatible con OpenAI de arriba para traducir el audio. Whisper solo traduce al inglés.",
+  "Translate into": "Traducir a",
+  "Used when you translate from the phone; the watch remembers your last pick too": "Se usa al traducir desde el teléfono; el reloj también recuerda tu última elección",
+  "WebDAV": "WebDAV",
+  "Server address": "Dirección del servidor",
+  "Username": "Usuario",
+  "Password": "Contraseña",
+  "Folder": "Carpeta",
+  "Upload the transcript too": "Subir también la transcripción",
+  "As a .txt next to the audio, with timestamps (and the translation, if there is one)": "Como .txt junto al audio, con marcas de tiempo (y la traducción, si la hay)",
+  "Done": "Listo",
+  "Changes save as you make them.": "Los cambios se guardan al instante.",
+  "Leave empty if your server needs none": "Déjala vacía si tu servidor no la necesita",
+  "Today": "Hoy",
+  "Cancel": "Cancelar",
+  "No answer": "Sin respuesta",
+  "Upload": "Subida",
+  "Saving to phone": "Guardando en el teléfono",
+  "{name} done": "{name}: listo",
+  "{name} failed: {msg}": "{name}: error. {msg}",
+  "Good": "Correcto",
+  "Slow storage": "Escritura lenta",
+  "Storage low": "Poco espacio",
+  "Dropping audio": "Perdiendo audio",
+  "Phone lagging": "Teléfono lento",
+  "Phone silent": "Teléfono sin respuesta",
+  "Mic paused": "Micro en pausa",
+  "Watch connected": "Reloj conectado",
+  "Watch not connected": "Reloj no conectado",
+  "Paused": "En pausa",
+  "Starting": "Iniciando",
+  "Health: {reason}": "Estado: {reason}",
+  "Recording to the phone": "Grabando en el teléfono",
+  "Recording on the watch": "Grabando en el reloj",
+  "Record on watch": "Grabar en el reloj",
+  "Resume": "Reanudar",
+  "Pause": "Pausar",
+  "Stop & save": "Detener y guardar",
+  "Discard": "Descartar",
+  "Discard this recording?": "¿Descartar esta grabación?",
+  "Text": "Texto",
+  "Translated": "Traducida",
+  "Uploaded": "Subida",
+  "{n} s lost": "{n} s perdidos",
+  "Transcribing": "Transcribiendo",
+  "Translating": "Traduciendo",
+  "Uploading": "Subiendo",
+  "{what} (waiting)": "{what} (en espera)",
+  "Couldn't decode the audio": "No se pudo decodificar el audio",
+  "If no download started, the Pebble app blocks downloads here. WebDAV upload works instead.": "Si no empezó ninguna descarga, es que la app Pebble las bloquea aquí. La subida a WebDAV sí funciona.",
+  "Save": "Guardar",
+  "Loading audio…": "Cargando audio…",
+  "Fetching from the watch… {pct}%": "Obteniendo del reloj… {pct}%",
+  "Play": "Reproducir",
+  "Play from watch": "Reproducir desde el reloj",
+  "Export .wav": "Exportar .wav",
+  "Upload again": "Subir de nuevo",
+  "Rename": "Cambiar nombre",
+  "Delete": "Borrar",
+  "Again": "Repetir",
+  "Translate": "Traducir",
+  "Translate to English": "Traducir al inglés",
+  "Transcript": "Transcripción",
+  "Loading…": "Cargando…",
+  "Copy text": "Copiar texto",
+  "Copied": "Copiado",
+  "Copying isn't allowed here": "Aquí no se permite copiar",
+  "Renamed": "Nombre cambiado",
+  "Delete from watch": "Borrar del reloj",
+  "Delete from phone": "Borrar del teléfono",
+  "Delete everywhere": "Borrar de todas partes",
+  "Delete \"{title}\"?": "¿Borrar «{title}»?",
+  "Deleted": "Borrada",
+  "{free} free of {total} · about {time} of recording": "{free} libres de {total} · unos {time} de grabación",
+  "Checking…": "Comprobando…",
+  "{used} used · {free} free · about {time} of recording": "{used} usados · {free} libres · unos {time} de grabación",
+  "Choose OpenAI-compatible under Transcription first: Whisper translation uses that service.": "Primero elige «Compatible con OpenAI» en Transcripción: la traducción con Whisper usa ese servicio.",
+  "For loud places": "Lugares ruidosos",
+  "For quiet voices": "Voces bajas",
+  "From further away": "Desde más lejos",
+  "Very quiet; may hiss": "Muy bajo; más siseo",
+  "Streams to the phone; falls back to the watch if the phone drops": "Transmite al teléfono; si se pierde la conexión, sigue en el reloj",
+  "In {lang}, the last language you picked": "{lang}, el último idioma que elegiste",
+  "Not saved: {msg}": "No se guardó: {msg}",
+  "Testing…": "Probando…",
+  "Watch with speaker": "Reloj con altavoz",
+  "Open Voice Recorder on your watch": "Abre Voice Recorder en tu reloj",
+  "Settings talk to the watch app while it runs. Open it, then come back here.": "Los ajustes se comunican con la app del reloj mientras está abierta. Ábrela y vuelve aquí.",
+  "Waiting for the watch app": "Esperando a la app del reloj",
+  "state|Recording": "Grabando",
+  "state|Paused": "En pausa",
+  "state|Starting": "Iniciando",
+  "state|Ready": "Listo",
+  "Turn on the plugins / permissions preview in the Pebble app to do this.": "Para esto, activa «Plugins / permissions preview» en la app Pebble.",
+  "Live settings are off": "Ajustes en directo desactivados",
+  "To control the recorder and manage recordings here, and for Voice Recorder to use the microphone, turn on Settings → Plugins → Plugins / permissions preview in the Pebble app. You can still change the settings below.": "Para controlar la grabadora y gestionar las grabaciones desde aquí, y para que Voice Recorder pueda usar el micrófono, activa Settings → Plugins → Plugins / permissions preview en la app Pebble. Puedes seguir cambiando los ajustes de abajo.",
+  "Changes are saved when you tap Done.": "Los cambios se guardan al tocar Listo."
+ },
+ "fr": {
+  "Voice Recorder": "Voice Recorder",
+  "Connecting": "Connexion…",
+  "Ready": "Prêt",
+  "Saving to watch": "Sauvegarde sur la montre",
+  "Recordings": "Enregistrements",
+  "No recordings yet": "Aucun enregistrement pour l’instant",
+  "Recording": "Enregistrement",
+  "Quality": "Qualité",
+  "8 kHz, about 4 minutes per MB": "8 kHz, environ 4 minutes par MB",
+  "16 kHz, about 2 minutes per MB": "16 kHz, environ 2 minutes par MB",
+  "Standard": "Standard",
+  "High": "Haute",
+  "Mic gain": "Gain du micro",
+  "No boost": "Sans amplification",
+  "Save to": "Enregistrer sur",
+  "Works without the phone": "Fonctionne sans le téléphone",
+  "Watch": "Montre",
+  "Phone": "Téléphone",
+  "Record on Quick Launch": "Enregistrer dès le Lancement rapide",
+  "Start recording straight away when opened with Quick Launch": "Lance l’enregistrement dès l’ouverture par le Lancement rapide",
+  "After each recording": "Après chaque enregistrement",
+  "Save to phone": "Sauvegarder sur le téléphone",
+  "Copy keeps it on the watch too; Move frees watch space": "Copier le garde aussi sur la montre ; Déplacer libère de l’espace sur la montre",
+  "Off": "Désactivé",
+  "Copy": "Copier",
+  "Move": "Déplacer",
+  "Transcribe": "Transcrire",
+  "In the last language you picked": "Dans la dernière langue choisie",
+  "Upload to WebDAV": "Envoyer sur WebDAV",
+  "Storage": "Stockage",
+  "Not connected": "Non connectée",
+  "0 KB used": "0 KB utilisé",
+  "Phone storage limit": "Limite de stockage sur le téléphone",
+  "How much of the Pebble app's storage recordings may use": "Part du stockage de l’app Pebble que les enregistrements peuvent occuper",
+  "Transcription": "Transcription",
+  "Service": "Service",
+  "OpenAI-compatible": "Compatible OpenAI",
+  "Wyoming (HA)": "Wyoming (HA)",
+  "Endpoint": "Adresse de l’API",
+  "API key": "Clé API",
+  "Model": "Modèle",
+  "Works with OpenAI and compatible servers (faster-whisper-server / Speaches, LocalAI, whisper.cpp, Groq). Models that return segments (such as whisper-1) give real timestamps; others are spread over the recording.": "Fonctionne avec OpenAI et les serveurs compatibles (faster-whisper-server / Speaches, LocalAI, whisper.cpp, Groq). Les modèles qui renvoient des segments (comme whisper-1) donnent un horodatage réel ; pour les autres, il est réparti sur la durée de l’enregistrement.",
+  "Test": "Tester",
+  "Home Assistant address": "Adresse de Home Assistant",
+  "Long-lived access token": "Jeton d’accès de longue durée",
+  "Speech-to-text entity": "Entité de reconnaissance vocale",
+  "Phones can't open Wyoming's raw TCP port, so this goes through Home Assistant's speech-to-text API, which fronts your Wyoming faster-whisper. Audio is split at pauses, so each line gets its real start time.": "Un téléphone ne peut pas ouvrir le port TCP brut de Wyoming : tout passe donc par l’API de reconnaissance vocale de Home Assistant, qui fait l’intermédiaire avec votre faster-whisper Wyoming. L’audio est découpé aux pauses, pour que chaque ligne ait son heure de début réelle.",
+  "Language": "Langue",
+  "Used when you transcribe from the phone; the watch remembers your last pick too": "Utilisée pour transcrire depuis le téléphone ; la montre retient aussi votre dernier choix",
+  "Translation": "Traduction",
+  "Chat model": "Modèle de chat",
+  "Whisper, into English": "Whisper, vers l’anglais",
+  "Any OpenAI-compatible chat model (OpenAI, Ollama, LM Studio, LocalAI, Groq). It translates the transcript line by line, so the translation keeps the timestamps. Recordings without a transcript are transcribed first.": "N’importe quel modèle de chat compatible OpenAI (OpenAI, Ollama, LM Studio, LocalAI, Groq). La transcription est traduite ligne par ligne : la traduction garde donc l’horodatage. Les enregistrements sans transcription sont d’abord transcrits.",
+  "Uses the OpenAI-compatible transcription service above to translate the audio. Whisper translates into English only.": "Utilise le service de transcription compatible OpenAI ci-dessus pour traduire l’audio. Whisper ne traduit que vers l’anglais.",
+  "Translate into": "Traduire en",
+  "Used when you translate from the phone; the watch remembers your last pick too": "Utilisée pour traduire depuis le téléphone ; la montre retient aussi votre dernier choix",
+  "WebDAV": "WebDAV",
+  "Server address": "Adresse du serveur",
+  "Username": "Nom d’utilisateur",
+  "Password": "Mot de passe",
+  "Folder": "Dossier",
+  "Upload the transcript too": "Envoyer aussi la transcription",
+  "As a .txt next to the audio, with timestamps (and the translation, if there is one)": "En .txt à côté de l’audio, avec l’horodatage (et la traduction, s’il y en a une)",
+  "Done": "Terminé",
+  "Changes save as you make them.": "Les modifications sont sauvegardées au fur et à mesure.",
+  "Leave empty if your server needs none": "Laisser vide si votre serveur n’en demande pas",
+  "Today": "Aujourd’hui",
+  "Cancel": "Annuler",
+  "No answer": "Pas de réponse",
+  "Upload": "Envoi",
+  "Saving to phone": "Sauvegarde sur le téléphone",
+  "{name} done": "{name} : terminé",
+  "{name} failed: {msg}": "{name} : échec. {msg}",
+  "Good": "Bon",
+  "Slow storage": "Stockage lent",
+  "Storage low": "Peu d’espace",
+  "Dropping audio": "Pertes audio",
+  "Phone lagging": "Téléphone lent",
+  "Phone silent": "Téléphone muet",
+  "Mic paused": "Micro en pause",
+  "Watch connected": "Montre connectée",
+  "Watch not connected": "Montre non connectée",
+  "Paused": "En pause",
+  "Starting": "Démarrage…",
+  "Health: {reason}": "État : {reason}",
+  "Recording to the phone": "Enregistrement vers le téléphone",
+  "Recording on the watch": "Enregistrement sur la montre",
+  "Record on watch": "Enregistrer sur la montre",
+  "Resume": "Reprendre",
+  "Pause": "Pause",
+  "Stop & save": "Arrêter et sauvegarder",
+  "Discard": "Supprimer",
+  "Discard this recording?": "Supprimer cet enregistrement ?",
+  "Text": "Texte",
+  "Translated": "Traduit",
+  "Uploaded": "Envoyé",
+  "{n} s lost": "{n} s perdues",
+  "Transcribing": "Transcription",
+  "Translating": "Traduction",
+  "Uploading": "Envoi",
+  "{what} (waiting)": "{what} (en attente)",
+  "Couldn't decode the audio": "Impossible de décoder l’audio",
+  "If no download started, the Pebble app blocks downloads here. WebDAV upload works instead.": "Si aucun téléchargement n’a démarré, c’est que l’app Pebble les bloque ici. L’envoi sur WebDAV fonctionne, lui.",
+  "Save": "Enregistrer",
+  "Loading audio…": "Chargement de l’audio…",
+  "Fetching from the watch… {pct}%": "Récupération depuis la montre… {pct} %",
+  "Play": "Lire",
+  "Play from watch": "Lire depuis la montre",
+  "Export .wav": "Exporter en .wav",
+  "Upload again": "Envoyer à nouveau",
+  "Rename": "Renommer",
+  "Delete": "Supprimer",
+  "Again": "Relancer",
+  "Translate": "Traduire",
+  "Translate to English": "Traduire en anglais",
+  "Transcript": "Transcription",
+  "Loading…": "Chargement…",
+  "Copy text": "Copier le texte",
+  "Copied": "Copié",
+  "Copying isn't allowed here": "La copie n’est pas autorisée ici",
+  "Renamed": "Renommé",
+  "Delete from watch": "Supprimer de la montre",
+  "Delete from phone": "Supprimer du téléphone",
+  "Delete everywhere": "Supprimer partout",
+  "Delete \"{title}\"?": "Supprimer « {title} » ?",
+  "Deleted": "Supprimé",
+  "{free} free of {total} · about {time} of recording": "{free} libres sur {total} · environ {time} d’enregistrement",
+  "Checking…": "Vérification…",
+  "{used} used · {free} free · about {time} of recording": "{used} utilisés · {free} libres · environ {time} d’enregistrement",
+  "Choose OpenAI-compatible under Transcription first: Whisper translation uses that service.": "Choisissez d’abord « Compatible OpenAI » sous Transcription : la traduction Whisper utilise ce service.",
+  "For loud places": "Pour les lieux bruyants",
+  "For quiet voices": "Pour les voix faibles",
+  "From further away": "Pour capter de plus loin",
+  "Very quiet; may hiss": "Très faible ; souffle possible",
+  "Streams to the phone; falls back to the watch if the phone drops": "Diffusion en continu vers le téléphone ; repli sur la montre si la connexion est perdue",
+  "In {lang}, the last language you picked": "Langue : {lang} (la dernière choisie)",
+  "Not saved: {msg}": "Non sauvegardé : {msg}",
+  "Testing…": "Test en cours…",
+  "Watch with speaker": "Montre avec haut-parleur",
+  "Open Voice Recorder on your watch": "Ouvrez Voice Recorder sur votre montre",
+  "Settings talk to the watch app while it runs. Open it, then come back here.": "Les paramètres communiquent avec l’app de la montre quand elle est ouverte. Ouvrez-la, puis revenez ici.",
+  "Waiting for the watch app": "En attente de l’app de la montre",
+  "state|Recording": "Enregistrement en cours",
+  "state|Paused": "En pause",
+  "state|Starting": "Démarrage…",
+  "state|Ready": "Prêt",
+  "Turn on the plugins / permissions preview in the Pebble app to do this.": "Activez « Plugins / permissions preview » dans l’app Pebble pour faire cela.",
+  "Live settings are off": "Réglages en direct indisponibles",
+  "To control the recorder and manage recordings here, and for Voice Recorder to use the microphone, turn on Settings → Plugins → Plugins / permissions preview in the Pebble app. You can still change the settings below.": "Pour piloter l’enregistreur et gérer les enregistrements ici, et pour que Voice Recorder puisse utiliser le micro, activez Settings → Plugins → Plugins / permissions preview dans l’app Pebble. Vous pouvez quand même modifier les réglages ci-dessous.",
+  "Changes are saved when you tap Done.": "Les modifications sont sauvegardées quand vous touchez Terminé."
+ },
+ "it": {
+  "Voice Recorder": "Voice Recorder",
+  "Connecting": "Connessione",
+  "Ready": "Pronto",
+  "Saving to watch": "Salvataggio sull’orologio",
+  "Recordings": "Registrazioni",
+  "No recordings yet": "Nessuna registrazione",
+  "Recording": "Registrazione",
+  "Quality": "Qualità",
+  "8 kHz, about 4 minutes per MB": "8 kHz, circa 4 minuti per MB",
+  "16 kHz, about 2 minutes per MB": "16 kHz, circa 2 minuti per MB",
+  "Standard": "Standard",
+  "High": "Alta",
+  "Mic gain": "Guadagno microfono",
+  "No boost": "Nessun aumento",
+  "Save to": "Salva su",
+  "Works without the phone": "Funziona senza telefono",
+  "Watch": "Orologio",
+  "Phone": "Telefono",
+  "Record on Quick Launch": "Registra con Avvio rapido",
+  "Start recording straight away when opened with Quick Launch": "Avvia subito la registrazione quando l’app si apre con Avvio rapido",
+  "After each recording": "Dopo ogni registrazione",
+  "Save to phone": "Salva sul telefono",
+  "Copy keeps it on the watch too; Move frees watch space": "Copia la tiene anche sull’orologio; Sposta libera spazio sull’orologio",
+  "Off": "No",
+  "Copy": "Copia",
+  "Move": "Sposta",
+  "Transcribe": "Trascrivi",
+  "In the last language you picked": "Nell’ultima lingua scelta",
+  "Upload to WebDAV": "Carica su WebDAV",
+  "Storage": "Memoria",
+  "Not connected": "Non connesso",
+  "0 KB used": "0 KB usati",
+  "Phone storage limit": "Limite di memoria sul telefono",
+  "How much of the Pebble app's storage recordings may use": "Quanta memoria dell’app Pebble possono usare le registrazioni",
+  "Transcription": "Trascrizione",
+  "Service": "Servizio",
+  "OpenAI-compatible": "Compatibile OpenAI",
+  "Wyoming (HA)": "Wyoming (HA)",
+  "Endpoint": "Endpoint",
+  "API key": "Chiave API",
+  "Model": "Modello",
+  "Works with OpenAI and compatible servers (faster-whisper-server / Speaches, LocalAI, whisper.cpp, Groq). Models that return segments (such as whisper-1) give real timestamps; others are spread over the recording.": "Funziona con OpenAI e i server compatibili (faster-whisper-server / Speaches, LocalAI, whisper.cpp, Groq). I modelli che restituiscono segmenti (come whisper-1) danno tempi reali; con gli altri il testo viene distribuito sulla durata della registrazione.",
+  "Test": "Prova",
+  "Home Assistant address": "Indirizzo di Home Assistant",
+  "Long-lived access token": "Token di accesso a lunga durata",
+  "Speech-to-text entity": "Entità di riconoscimento vocale",
+  "Phones can't open Wyoming's raw TCP port, so this goes through Home Assistant's speech-to-text API, which fronts your Wyoming faster-whisper. Audio is split at pauses, so each line gets its real start time.": "I telefoni non possono aprire la porta TCP diretta di Wyoming, quindi si passa dall’API di riconoscimento vocale di Home Assistant, che fa da tramite al tuo Wyoming faster-whisper. L’audio viene diviso nelle pause, così ogni riga ha il suo vero orario d’inizio.",
+  "Language": "Lingua",
+  "Used when you transcribe from the phone; the watch remembers your last pick too": "Usata quando trascrivi dal telefono; anche l’orologio ricorda l’ultima scelta",
+  "Translation": "Traduzione",
+  "Chat model": "Modello chat",
+  "Whisper, into English": "Whisper, in inglese",
+  "Any OpenAI-compatible chat model (OpenAI, Ollama, LM Studio, LocalAI, Groq). It translates the transcript line by line, so the translation keeps the timestamps. Recordings without a transcript are transcribed first.": "Qualsiasi modello chat compatibile OpenAI (OpenAI, Ollama, LM Studio, LocalAI, Groq). Traduce la trascrizione riga per riga, così la traduzione mantiene i tempi. Le registrazioni senza trascrizione vengono prima trascritte.",
+  "Uses the OpenAI-compatible transcription service above to translate the audio. Whisper translates into English only.": "Usa il servizio di trascrizione compatibile OpenAI qui sopra per tradurre l’audio. Whisper traduce solo in inglese.",
+  "Translate into": "Traduci in",
+  "Used when you translate from the phone; the watch remembers your last pick too": "Usata quando traduci dal telefono; anche l’orologio ricorda l’ultima scelta",
+  "WebDAV": "WebDAV",
+  "Server address": "Indirizzo del server",
+  "Username": "Nome utente",
+  "Password": "Password",
+  "Folder": "Cartella",
+  "Upload the transcript too": "Carica anche la trascrizione",
+  "As a .txt next to the audio, with timestamps (and the translation, if there is one)": "Come file .txt accanto all’audio, con i tempi (e la traduzione, se c’è)",
+  "Done": "Fine",
+  "Changes save as you make them.": "Le modifiche vengono salvate subito.",
+  "Leave empty if your server needs none": "Lascia vuoto se il server non la richiede",
+  "Today": "Oggi",
+  "Cancel": "Annulla",
+  "No answer": "Nessuna risposta",
+  "Upload": "Caricamento",
+  "Saving to phone": "Salvataggio sul telefono",
+  "{name} done": "{name}: fatto",
+  "{name} failed: {msg}": "{name}: errore – {msg}",
+  "Good": "Buono",
+  "Slow storage": "Memoria lenta",
+  "Storage low": "Poca memoria",
+  "Dropping audio": "Perdita audio",
+  "Phone lagging": "Telefono lento",
+  "Phone silent": "Telefono muto",
+  "Mic paused": "Mic in pausa",
+  "Watch connected": "Orologio connesso",
+  "Watch not connected": "Orologio non connesso",
+  "Paused": "In pausa",
+  "Starting": "Avvio",
+  "Health: {reason}": "Stato: {reason}",
+  "Recording to the phone": "Registrazione sul telefono",
+  "Recording on the watch": "Registrazione sull’orologio",
+  "Record on watch": "Registra sull’orologio",
+  "Resume": "Riprendi",
+  "Pause": "Pausa",
+  "Stop & save": "Ferma e salva",
+  "Discard": "Scarta",
+  "Discard this recording?": "Scartare questa registrazione?",
+  "Text": "Testo",
+  "Translated": "Tradotta",
+  "Uploaded": "Caricata",
+  "{n} s lost": "{n} s persi",
+  "Transcribing": "Trascrizione",
+  "Translating": "Traduzione",
+  "Uploading": "Caricamento",
+  "{what} (waiting)": "{what} (in attesa)",
+  "Couldn't decode the audio": "Impossibile decodificare l’audio",
+  "If no download started, the Pebble app blocks downloads here. WebDAV upload works instead.": "Se il download non è partito, l’app Pebble blocca i download qui. Puoi usare il caricamento su WebDAV.",
+  "Save": "Salva",
+  "Loading audio…": "Caricamento audio…",
+  "Fetching from the watch… {pct}%": "Recupero dall’orologio… {pct}%",
+  "Play": "Riproduci",
+  "Play from watch": "Riproduci dall’orologio",
+  "Export .wav": "Esporta .wav",
+  "Upload again": "Carica di nuovo",
+  "Rename": "Rinomina",
+  "Delete": "Elimina",
+  "Again": "Ripeti",
+  "Translate": "Traduci",
+  "Translate to English": "Traduci in inglese",
+  "Transcript": "Trascrizione",
+  "Loading…": "Caricamento…",
+  "Copy text": "Copia testo",
+  "Copied": "Copiato",
+  "Copying isn't allowed here": "Qui non è possibile copiare",
+  "Renamed": "Rinominata",
+  "Delete from watch": "Elimina dall’orologio",
+  "Delete from phone": "Elimina dal telefono",
+  "Delete everywhere": "Elimina ovunque",
+  "Delete \"{title}\"?": "Eliminare «{title}»?",
+  "Deleted": "Eliminata",
+  "{free} free of {total} · about {time} of recording": "{free} liberi su {total} · circa {time} di registrazione",
+  "Checking…": "Verifica…",
+  "{used} used · {free} free · about {time} of recording": "{used} usati · {free} liberi · circa {time} di registrazione",
+  "Choose OpenAI-compatible under Transcription first: Whisper translation uses that service.": "Prima scegli Compatibile OpenAI in Trascrizione: la traduzione con Whisper usa quel servizio.",
+  "For loud places": "Per luoghi rumorosi",
+  "For quiet voices": "Per voci deboli",
+  "From further away": "Da più lontano",
+  "Very quiet; may hiss": "Molto piano; fruscio",
+  "Streams to the phone; falls back to the watch if the phone drops": "Trasmette al telefono; passa all’orologio se il telefono si disconnette",
+  "In {lang}, the last language you picked": "In {lang}, l’ultima lingua scelta",
+  "Not saved: {msg}": "Non salvato: {msg}",
+  "Testing…": "Prova in corso…",
+  "Watch with speaker": "Orologio con altoparlante",
+  "Open Voice Recorder on your watch": "Apri Voice Recorder sull’orologio",
+  "Settings talk to the watch app while it runs. Open it, then come back here.": "Le impostazioni comunicano con l’app sull’orologio mentre è aperta. Aprila, poi torna qui.",
+  "Waiting for the watch app": "In attesa dell’app sull’orologio",
+  "state|Recording": "In registrazione",
+  "state|Paused": "In pausa",
+  "state|Starting": "Avvio",
+  "state|Ready": "Pronto",
+  "Turn on the plugins / permissions preview in the Pebble app to do this.": "Per farlo, attiva «Plugins / permissions preview» nell’app Pebble.",
+  "Live settings are off": "Impostazioni in tempo reale disattivate",
+  "To control the recorder and manage recordings here, and for Voice Recorder to use the microphone, turn on Settings → Plugins → Plugins / permissions preview in the Pebble app. You can still change the settings below.": "Per controllare il registratore e gestire le registrazioni da qui, e perché Voice Recorder possa usare il microfono, attiva Settings → Plugins → Plugins / permissions preview nell’app Pebble. Puoi comunque modificare le impostazioni qui sotto.",
+  "Changes are saved when you tap Done.": "Le modifiche vengono salvate quando tocchi Fine."
+ },
+ "pt": {
+  "Voice Recorder": "Voice Recorder",
+  "Connecting": "A ligar",
+  "Ready": "Pronto",
+  "Saving to watch": "A guardar no relógio",
+  "Recordings": "Gravações",
+  "No recordings yet": "Ainda sem gravações",
+  "Recording": "Gravação",
+  "Quality": "Qualidade",
+  "8 kHz, about 4 minutes per MB": "8 kHz, cerca de 4 minutos por MB",
+  "16 kHz, about 2 minutes per MB": "16 kHz, cerca de 2 minutos por MB",
+  "Standard": "Normal",
+  "High": "Alta",
+  "Mic gain": "Ganho do microfone",
+  "No boost": "Sem amplificação",
+  "Save to": "Guardar em",
+  "Works without the phone": "Funciona sem o telemóvel",
+  "Watch": "Relógio",
+  "Phone": "Telemóvel",
+  "Record on Quick Launch": "Gravar com o Início rápido",
+  "Start recording straight away when opened with Quick Launch": "Começa logo a gravar quando a app é aberta com o Início rápido",
+  "After each recording": "Após cada gravação",
+  "Save to phone": "Guardar no telemóvel",
+  "Copy keeps it on the watch too; Move frees watch space": "Copiar mantém-na também no relógio; Mover liberta espaço no relógio",
+  "Off": "Desligado",
+  "Copy": "Copiar",
+  "Move": "Mover",
+  "Transcribe": "Transcrever",
+  "In the last language you picked": "No último idioma escolhido",
+  "Upload to WebDAV": "Enviar para WebDAV",
+  "Storage": "Armazenamento",
+  "Not connected": "Não ligado",
+  "0 KB used": "0 KB usados",
+  "Phone storage limit": "Limite de armazenamento no telemóvel",
+  "How much of the Pebble app's storage recordings may use": "Quanto do armazenamento da app Pebble as gravações podem ocupar",
+  "Transcription": "Transcrição",
+  "Service": "Serviço",
+  "OpenAI-compatible": "Compatível com OpenAI",
+  "Wyoming (HA)": "Wyoming (HA)",
+  "Endpoint": "Endpoint",
+  "API key": "Chave de API",
+  "Model": "Modelo",
+  "Works with OpenAI and compatible servers (faster-whisper-server / Speaches, LocalAI, whisper.cpp, Groq). Models that return segments (such as whisper-1) give real timestamps; others are spread over the recording.": "Funciona com a OpenAI e servidores compatíveis (faster-whisper-server / Speaches, LocalAI, whisper.cpp, Groq). Os modelos que devolvem segmentos (como o whisper-1) dão marcas de tempo reais; nos restantes, os tempos são distribuídos ao longo da gravação.",
+  "Test": "Testar",
+  "Home Assistant address": "Endereço do Home Assistant",
+  "Long-lived access token": "Token de acesso de longa duração",
+  "Speech-to-text entity": "Entidade de voz para texto",
+  "Phones can't open Wyoming's raw TCP port, so this goes through Home Assistant's speech-to-text API, which fronts your Wyoming faster-whisper. Audio is split at pauses, so each line gets its real start time.": "Os telemóveis não conseguem abrir diretamente a porta TCP do Wyoming, por isso o pedido passa pela API de voz para texto do Home Assistant, que encaminha para o seu Wyoming faster-whisper. O áudio é dividido nas pausas, para que cada linha tenha o tempo de início real.",
+  "Language": "Idioma",
+  "Used when you transcribe from the phone; the watch remembers your last pick too": "Usado ao transcrever a partir do telemóvel; o relógio também memoriza a última escolha",
+  "Translation": "Tradução",
+  "Chat model": "Modelo de chat",
+  "Whisper, into English": "Whisper, para inglês",
+  "Any OpenAI-compatible chat model (OpenAI, Ollama, LM Studio, LocalAI, Groq). It translates the transcript line by line, so the translation keeps the timestamps. Recordings without a transcript are transcribed first.": "Qualquer modelo de chat compatível com OpenAI (OpenAI, Ollama, LM Studio, LocalAI, Groq). Traduz a transcrição linha a linha, para que a tradução mantenha as marcas de tempo. As gravações sem transcrição são transcritas primeiro.",
+  "Uses the OpenAI-compatible transcription service above to translate the audio. Whisper translates into English only.": "Usa o serviço de transcrição compatível com OpenAI indicado acima para traduzir o áudio. O Whisper só traduz para inglês.",
+  "Translate into": "Traduzir para",
+  "Used when you translate from the phone; the watch remembers your last pick too": "Usado ao traduzir a partir do telemóvel; o relógio também memoriza a última escolha",
+  "WebDAV": "WebDAV",
+  "Server address": "Endereço do servidor",
+  "Username": "Nome de utilizador",
+  "Password": "Palavra-passe",
+  "Folder": "Pasta",
+  "Upload the transcript too": "Enviar também a transcrição",
+  "As a .txt next to the audio, with timestamps (and the translation, if there is one)": "Como .txt junto ao áudio, com marcas de tempo (e a tradução, se existir)",
+  "Done": "Concluído",
+  "Changes save as you make them.": "As alterações são guardadas automaticamente.",
+  "Leave empty if your server needs none": "Deixe vazio se o servidor não exigir",
+  "Today": "Hoje",
+  "Cancel": "Cancelar",
+  "No answer": "Sem resposta",
+  "Upload": "Envio",
+  "Saving to phone": "A guardar no telemóvel",
+  "{name} done": "{name}: concluído",
+  "{name} failed: {msg}": "{name}: falhou — {msg}",
+  "Good": "Bom",
+  "Slow storage": "Escrita lenta",
+  "Storage low": "Pouco espaço",
+  "Dropping audio": "A perder áudio",
+  "Phone lagging": "Telemóvel lento",
+  "Phone silent": "Telemóvel mudo",
+  "Mic paused": "Microfone em pausa",
+  "Watch connected": "Relógio ligado",
+  "Watch not connected": "Relógio não ligado",
+  "Paused": "Em pausa",
+  "Starting": "A iniciar",
+  "Health: {reason}": "Estado: {reason}",
+  "Recording to the phone": "A gravar para o telemóvel",
+  "Recording on the watch": "A gravar no relógio",
+  "Record on watch": "Gravar no relógio",
+  "Resume": "Retomar",
+  "Pause": "Pausar",
+  "Stop & save": "Parar e guardar",
+  "Discard": "Descartar",
+  "Discard this recording?": "Descartar esta gravação?",
+  "Text": "Texto",
+  "Translated": "Traduzida",
+  "Uploaded": "Enviada",
+  "{n} s lost": "{n} s perdidos",
+  "Transcribing": "A transcrever",
+  "Translating": "A traduzir",
+  "Uploading": "A enviar",
+  "{what} (waiting)": "{what} (em espera)",
+  "Couldn't decode the audio": "Não foi possível descodificar o áudio",
+  "If no download started, the Pebble app blocks downloads here. WebDAV upload works instead.": "Se a transferência não começou, a app Pebble bloqueia transferências aqui. Em alternativa, use o envio para WebDAV.",
+  "Save": "Guardar",
+  "Loading audio…": "A carregar áudio…",
+  "Fetching from the watch… {pct}%": "A obter do relógio… {pct}%",
+  "Play": "Reproduzir",
+  "Play from watch": "Reproduzir do relógio",
+  "Export .wav": "Exportar .wav",
+  "Upload again": "Enviar de novo",
+  "Rename": "Mudar o nome",
+  "Delete": "Apagar",
+  "Again": "Repetir",
+  "Translate": "Traduzir",
+  "Translate to English": "Traduzir para inglês",
+  "Transcript": "Transcrição",
+  "Loading…": "A carregar…",
+  "Copy text": "Copiar texto",
+  "Copied": "Copiado",
+  "Copying isn't allowed here": "Não é permitido copiar aqui",
+  "Renamed": "Nome alterado",
+  "Delete from watch": "Apagar do relógio",
+  "Delete from phone": "Apagar do telemóvel",
+  "Delete everywhere": "Apagar de todo o lado",
+  "Delete \"{title}\"?": "Apagar «{title}»?",
+  "Deleted": "Apagada",
+  "{free} free of {total} · about {time} of recording": "{free} livres de {total} · cerca de {time} de gravação",
+  "Checking…": "A verificar…",
+  "{used} used · {free} free · about {time} of recording": "{used} usados · {free} livres · cerca de {time} de gravação",
+  "Choose OpenAI-compatible under Transcription first: Whisper translation uses that service.": "Escolha primeiro «Compatível com OpenAI» em Transcrição: a tradução com Whisper usa esse serviço.",
+  "For loud places": "Para locais ruidosos",
+  "For quiet voices": "Para vozes baixas",
+  "From further away": "A maior distância",
+  "Very quiet; may hiss": "Muito baixo; pode chiar",
+  "Streams to the phone; falls back to the watch if the phone drops": "Transmite para o telemóvel; passa para o relógio se o telemóvel falhar",
+  "In {lang}, the last language you picked": "Em {lang}, o último idioma escolhido",
+  "Not saved: {msg}": "Não guardado: {msg}",
+  "Testing…": "A testar…",
+  "Watch with speaker": "Relógio com altifalante",
+  "Open Voice Recorder on your watch": "Abra o Voice Recorder no relógio",
+  "Settings talk to the watch app while it runs. Open it, then come back here.": "As definições comunicam com a app do relógio enquanto esta está aberta. Abra-a e volte aqui.",
+  "Waiting for the watch app": "À espera da app do relógio",
+  "state|Recording": "A gravar",
+  "state|Paused": "Em pausa",
+  "state|Starting": "A iniciar",
+  "state|Ready": "Pronto",
+  "Turn on the plugins / permissions preview in the Pebble app to do this.": "Para isto, ative «Plugins / permissions preview» na app Pebble.",
+  "Live settings are off": "Definições em tempo real desativadas",
+  "To control the recorder and manage recordings here, and for Voice Recorder to use the microphone, turn on Settings → Plugins → Plugins / permissions preview in the Pebble app. You can still change the settings below.": "Para controlar o gravador e gerir as gravações aqui, e para que o Voice Recorder possa usar o microfone, ative Settings → Plugins → Plugins / permissions preview na app Pebble. Pode ainda alterar as definições abaixo.",
+  "Changes are saved when you tap Done.": "As alterações são guardadas quando tocar em Concluído."
+ }
+};
+// I18N-END
+</script>
 <script>
 (function () {
   'use strict';
@@ -271,6 +1059,46 @@ footer .sub { margin-top: 10px; }
     chev: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg>'
   };
 
+  // ---- Language ----------------------------------------------------------------------------------
+  // The page follows the phone's language; I18N (below) holds the translations, keyed by the
+  // English text. Static text in the HTML is swapped by exact match, dynamic text goes through t().
+  var LANG = String((navigator.languages && navigator.languages[0]) || navigator.language || 'en').slice(0, 2).toLowerCase();
+  if (!window.I18N || !window.I18N[LANG]) LANG = 'en';
+  var DICT = LANG === 'en' ? {} : window.I18N[LANG];
+  document.documentElement.lang = LANG;
+
+  // A key may carry a context, 'state|Recording', when one English word needs two translations;
+  // English shows the part after the bar.
+  function t(text, vars) {
+    var out = DICT[text] || text.slice(text.indexOf('|') + 1);
+    return vars ? out.replace(/\{(\w+)\}/g, function (all, k) { return vars[k] != null ? vars[k] : all; }) : out;
+  }
+
+  function translatePage(root) {
+    var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+    var node;
+    while ((node = walker.nextNode())) {
+      var raw = node.nodeValue, key = raw.trim();
+      if (key && DICT[key]) node.nodeValue = raw.replace(key, DICT[key]);
+    }
+    $$('[placeholder]', root).forEach(function (el) {
+      var k = el.getAttribute('placeholder');
+      if (DICT[k]) el.setAttribute('placeholder', DICT[k]);
+    });
+  }
+
+  var langNames = null;
+  try { langNames = new Intl.DisplayNames([LANG], { type: 'language' }); } catch (e) { /* old WebView */ }
+  function langLabel(l) {
+    var n = null;
+    try { n = langNames && langNames.of(l.code); } catch (e) { n = null; }
+    return n && n !== l.code ? n.charAt(0).toLocaleUpperCase(LANG) + n.slice(1) : l.name;
+  }
+  function langName(code) {
+    var l = S.languages.filter(function (x) { return x.code === code; })[0];
+    return l ? langLabel(l) : code;
+  }
+
   // ---- Small helpers -----------------------------------------------------------------------------
   function $(sel, root) { return (root || document).querySelector(sel); }
   function $$(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
@@ -283,15 +1111,16 @@ footer .sub { margin-top: 10px; }
   function size(b) {
     if (b < 1024) return b + ' B';
     if (b < 1048576) return Math.round(b / 1024) + ' KB';
-    return (b / 1048576).toFixed(b < 10485760 ? 1 : 0).replace(/\.0$/, '') + ' MB';
+    var mb = Math.round(b / 1048576 * (b < 10485760 ? 10 : 1)) / (b < 10485760 ? 10 : 1);
+    return mb.toLocaleString(LANG) + ' MB';
   }
   function rateOf(code) { return code ? 16000 : 8000; }
   function duration(r) { return r.samples * 1000 / rateOf(r.rate); }
   function when(created) {
     var d = new Date(created * 1000), now = new Date();
-    var time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-    var day = d.toDateString() === now.toDateString() ? 'Today'
-      : d.toLocaleDateString([], { month: 'short', day: 'numeric', year: d.getFullYear() === now.getFullYear() ? undefined : 'numeric' });
+    var time = d.toLocaleTimeString(LANG, { hour: 'numeric', minute: '2-digit' });
+    var day = d.toDateString() === now.toDateString() ? t('Today')
+      : d.toLocaleDateString(LANG, { month: 'short', day: 'numeric', year: d.getFullYear() === now.getFullYear() ? undefined : 'numeric' });
     return day + ', ' + time;
   }
   function title(r) { return r.name || when(r.created); }
@@ -304,11 +1133,11 @@ footer .sub { margin-top: 10px; }
 
   var toastTimer;
   function toast(msg) {
-    var t = $('#toast');
-    t.textContent = msg;
-    t.classList.add('show');
+    var el = $('#toast');
+    el.textContent = msg;
+    el.classList.add('show');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(function () { t.classList.remove('show'); }, 2600);
+    toastTimer = setTimeout(function () { el.classList.remove('show'); }, 2600);
   }
 
   // In-page dialog: WebViews don't always support alert/confirm.
@@ -317,7 +1146,7 @@ footer .sub { margin-top: 10px; }
       $('#dialogText').textContent = text;
       var box = $('#dialogOpts');
       box.innerHTML = '';
-      options.concat([{ label: 'Cancel', value: null }]).forEach(function (o) {
+      options.concat([{ label: t('Cancel'), value: null }]).forEach(function (o) {
         var b = document.createElement('button');
         b.className = 'btn' + (o.danger ? ' danger' : '') + (o.primary ? ' primary' : '');
         b.textContent = o.label;
@@ -329,12 +1158,23 @@ footer .sub { margin-top: 10px; }
   }
 
   // ---- Talking to the app's JavaScript -----------------------------------------------------------
+  // Three ways in: the live bridge (the Pebble app's plugins / permissions preview, which opens this
+  // page from configPage); the classic flow (opened by the app's JS as a data: URL, settings in the
+  // fragment, returned on close); or a plain browser (demo data, for previewing the page).
   var bridge = !!(window.Pebble && typeof window.Pebble.sendMessage === 'function');
+  var classic = null;
+  if (!bridge && location.hash.length > 1) {
+    try {
+      var passed = JSON.parse(decodeURIComponent(location.hash.slice(1)));
+      if (passed && passed.classic) classic = passed;
+    } catch (e) { /* not ours */ }
+  }
 
   function rpc(msg) {
-    var p = bridge ? window.Pebble.sendMessage('pkjs', msg) : demo.handle(msg);
+    var p = bridge ? window.Pebble.sendMessage('pkjs', msg)
+          : classic ? classicHandle(msg) : demo.handle(msg);
     return p.then(function (r) {
-      if (!r || r.ok === false || (r.error && r.ok === undefined)) throw new Error((r && r.error) || 'No answer');
+      if (!r || r.ok === false || (r.error && r.ok === undefined)) throw new Error((r && r.error) || t('No answer'));
       return r;
     });
   }
@@ -362,14 +1202,16 @@ footer .sub { margin-top: 10px; }
   function onJob(job) {
     var r = S.recordings.filter(function (x) { return x.id === job.id; })[0];
     if (r) r.job = job.status === 'done' || job.status === 'failed' ? null : job;
-    if (job.kind === 'transcribe' && job.status === 'done' && S.open === job.id) {
-      S.transcript = null;
-      S.transcriptFor = null;
-      if (r) r.transcript = true;
+    if ((job.kind === 'transcribe' || job.kind === 'translate') && job.status === 'done' && S.open === job.id) {
+      // Translating may have made a transcript first, so refetch both.
+      S.transcript = S.transcriptFor = null;
+      S.translation = S.translationFor = null;
+      if (r && job.kind === 'transcribe') r.transcript = true;
+      if (r && job.kind === 'translate') r.translation = true;
     }
-    var name = { transcribe: 'Transcription', upload: 'Upload', save: 'Saving to phone' }[job.kind];
-    if (job.status === 'done') toast(job.msg || (name + ' done'));
-    if (job.status === 'failed') toast(name + ' failed: ' + job.msg);
+    var name = t({ transcribe: 'Transcription', translate: 'Translation', upload: 'Upload', save: 'Saving to phone' }[job.kind]);
+    if (job.status === 'done') toast(job.msg || t('{name} done', { name: name }));
+    if (job.status === 'failed') toast(t('{name} failed: {msg}', { name: name, msg: job.msg }));
     renderRecordings();
     renderSheet();
   }
@@ -383,11 +1225,11 @@ footer .sub { margin-top: 10px; }
     if (!st) return;
     var w = st.watch || {};
     var conn = $('#conn');
-    conn.innerHTML = '<span class="dot ' + (w.connected ? 'good' : '') + '"></span><span>' + (w.connected ? 'Watch connected' : 'Watch not connected') + '</span>';
+    conn.innerHTML = '<span class="dot ' + (w.connected ? 'good' : '') + '"></span><span>' + esc(t(w.connected ? 'Watch connected' : 'Watch not connected')) + '</span>';
     var rec = st.recorder || { state: 0 };
     var live = rec.state === 1, paused = rec.state === 2, starting = rec.state === 3, idle = !rec.state;
     var label = live ? 'Recording' : paused ? 'Paused' : starting ? 'Starting' : 'Ready';
-    $('#recState').textContent = label;
+    $('#recState').textContent = t('state|' + label);
     $('#recState').classList.toggle('live', live || starting);
     var health = $('#recHealth');
     if (idle) {
@@ -395,21 +1237,21 @@ footer .sub { margin-top: 10px; }
     } else {
       health.classList.remove('hidden');
       health.innerHTML = '<span class="dot ' + LEVELS[rec.health || 0] + '"></span><span>' +
-        (rec.reason === 8 ? 'Mic paused' : 'Health: ' + (REASONS[rec.reason] || 'Good')) + '</span>';
+        esc(rec.reason === 8 ? t('Mic paused') : t('Health: {reason}', { reason: t(REASONS[rec.reason] || 'Good') })) + '</span>';
       health.style.color = 'var(--' + LEVELS[rec.health || 0] + ')';
     }
     var toPhone = idle ? S.settings && S.settings.target === 1 : rec.mode === 1;
-    $('#recWhere').textContent = idle ? (toPhone ? 'Saving to phone' : 'Saving to watch') : (rec.mode === 1 ? 'Recording to the phone' : 'Recording on the watch');
+    $('#recWhere').textContent = t(idle ? (toPhone ? 'Saving to phone' : 'Saving to watch') : (rec.mode === 1 ? 'Recording to the phone' : 'Recording on the watch'));
     var actions = $('#recActions');
     var html;
     if (!w.connected) {
-      html = '<button class="btn big primary" disabled>' + ICON.rec + 'Record on watch</button>';
+      html = '<button class="btn big primary" disabled>' + ICON.rec + esc(t('Record on watch')) + '</button>';
     } else if (idle) {
-      html = '<button class="btn big primary" data-ctl="start">' + ICON.rec + 'Record on watch</button>';
+      html = '<button class="btn big primary" data-ctl="start">' + ICON.rec + esc(t('Record on watch')) + '</button>';
     } else {
-      html = '<button class="btn" data-ctl="' + (paused ? 'resume' : 'pause') + '">' + (paused ? ICON.rec + 'Resume' : ICON.pause + 'Pause') + '</button>' +
-             '<button class="btn primary" data-ctl="stop">' + ICON.stop + 'Stop &amp; save</button>' +
-             '<button class="btn danger" data-ctl="discard">' + ICON.trash + 'Discard</button>';
+      html = '<button class="btn" data-ctl="' + (paused ? 'resume' : 'pause') + '">' + (paused ? ICON.rec + esc(t('Resume')) : ICON.pause + esc(t('Pause'))) + '</button>' +
+             '<button class="btn primary" data-ctl="stop">' + ICON.stop + esc(t('Stop & save')) + '</button>' +
+             '<button class="btn danger" data-ctl="discard">' + ICON.trash + esc(t('Discard')) + '</button>';
     }
     if (actions.getAttribute('data-html') !== html) {
       actions.innerHTML = html;
@@ -432,7 +1274,7 @@ footer .sub { margin-top: 10px; }
     if (!b) return;
     var action = b.getAttribute('data-ctl');
     var go = action === 'discard'
-      ? ask('Discard this recording?', [{ label: 'Discard', value: true, danger: true }])
+      ? ask(t('Discard this recording?'), [{ label: t('Discard'), value: true, danger: true }])
       : Promise.resolve(true);
     go.then(function (yes) {
       if (!yes) return;
@@ -444,25 +1286,26 @@ footer .sub { margin-top: 10px; }
   // ---- Recordings list ---------------------------------------------------------------------------
   function badges(r) {
     var b = [];
-    if (r.open) b.push('<span class="badge" style="color:var(--accent)">Recording</span>');
-    if (r.onWatch) b.push('<span class="badge watch">Watch</span>');
-    if (r.onPhone) b.push('<span class="badge phone">Phone</span>');
-    if (r.transcript) b.push('<span class="badge text">Text' + (r.lang ? ' · ' + esc(r.lang.toUpperCase()) : '') + '</span>');
-    if (r.uploaded) b.push('<span class="badge up">Uploaded</span>');
-    if (r.lost) b.push('<span class="badge lost">' + (r.lost / 10).toFixed(1) + ' s lost</span>');
+    if (r.open) b.push('<span class="badge" style="color:var(--accent)">' + esc(t('state|Recording')) + '</span>');
+    if (r.onWatch) b.push('<span class="badge watch">' + esc(t('Watch')) + '</span>');
+    if (r.onPhone) b.push('<span class="badge phone">' + esc(t('Phone')) + '</span>');
+    if (r.transcript) b.push('<span class="badge text">' + esc(t('Text')) + (r.lang ? ' · ' + esc(r.lang.toUpperCase()) : '') + '</span>');
+    if (r.translation) b.push('<span class="badge text">' + esc(t('Translated')) + (r.xlang ? ' · ' + esc(r.xlang.toUpperCase()) : '') + '</span>');
+    if (r.uploaded) b.push('<span class="badge up">' + esc(t('Uploaded')) + '</span>');
+    if (r.lost) b.push('<span class="badge lost">' + esc(t('{n} s lost', { n: (r.lost / 10).toLocaleString(LANG, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) })) + '</span>');
     return b.join('');
   }
 
   function jobLabel(job) {
-    var what = { transcribe: 'Transcribing', upload: 'Uploading', save: 'Saving to phone' }[job.kind];
-    return job.status === 'queued' ? what + ' (waiting)' : what + (job.pct ? ' ' + job.pct + '%' : '…');
+    var what = t({ transcribe: 'Transcribing', translate: 'Translating', upload: 'Uploading', save: 'Saving to phone' }[job.kind]);
+    return job.status === 'queued' ? t('{what} (waiting)', { what: what }) : what + (job.pct ? ' ' + job.pct + '%' : '…');
   }
 
   function renderRecordings() {
     var box = $('#recs');
     var list = S.recordings.slice().reverse();  // newest first
     if (!list.length) {
-      box.innerHTML = '<div class="empty">No recordings yet</div>';
+      box.innerHTML = '<div class="empty">' + esc(t('No recordings yet')) + '</div>';
       return;
     }
     box.innerHTML = list.map(function (r) {
@@ -545,7 +1388,7 @@ footer .sub { margin-top: 10px; }
       a.url = URL.createObjectURL(blob);
       a.error = null;
     } catch (e) {
-      a.error = 'Couldn\'t decode the audio';
+      a.error = t('Couldn\'t decode the audio');
     }
     renderSheet();
   }
@@ -573,7 +1416,7 @@ footer .sub { margin-top: 10px; }
     document.body.appendChild(link);
     link.click();
     link.remove();
-    toast('If no download started, the Pebble app blocks downloads here. WebDAV upload works instead.');
+    toast(t('If no download started, the Pebble app blocks downloads here. WebDAV upload works instead.'));
   }
 
   // ---- Recording sheet ---------------------------------------------------------------------------
@@ -581,8 +1424,8 @@ footer .sub { margin-top: 10px; }
 
   function openSheet(id) {
     S.open = id;
-    S.transcript = null;
-    S.transcriptFor = null;
+    S.transcript = S.transcriptFor = null;
+    S.translation = S.translationFor = null;
     S.renaming = false;
     renderSheet();
     $('#scrim').classList.add('show');
@@ -600,7 +1443,7 @@ footer .sub { margin-top: 10px; }
 
   function langOptions(selected) {
     return S.languages.map(function (l) {
-      return '<option value="' + l.code + '"' + (l.code === selected ? ' selected' : '') + '>' + esc(l.name) + '</option>';
+      return '<option value="' + l.code + '"' + (l.code === selected ? ' selected' : '') + '>' + esc(langLabel(l)) + '</option>';
     }).join('');
   }
 
@@ -621,7 +1464,7 @@ footer .sub { margin-top: 10px; }
     var html = '<div class="grab"></div>';
     if (S.renaming) {
       html += '<div class="inline"><input class="field" id="renameField" maxlength="23" value="' + esc(r.name) + '" placeholder="' + esc(when(r.created)) + '">' +
-              '<button class="btn small primary" id="renameSave">Save</button></div>';
+              '<button class="btn small primary" id="renameSave">' + esc(t('Save')) + '</button></div>';
     } else {
       html += '<h3>' + esc(title(r)) + '</h3>';
     }
@@ -633,26 +1476,34 @@ footer .sub { margin-top: 10px; }
       if (a.url) {
         html += '<audio controls preload="auto" src="' + a.url + '"></audio>';
       } else if (a.loading) {
-        html += '<div class="loadbox">' + (r.onPhone ? 'Loading audio…' : 'Fetching from the watch… ' + (a.pct || 0) + '%') + '</div>';
+        html += '<div class="loadbox">' + esc(r.onPhone ? t('Loading audio…') : t('Fetching from the watch… {pct}%', { pct: a.pct || 0 })) + '</div>';
       } else {
         if (a.error) html += '<div class="loadbox" style="color:var(--bad)">' + esc(a.error) + '</div>';
         html += '<div class="actions"><button class="btn" data-act="load"' + (!r.onPhone && !connected ? ' disabled' : '') + '>' +
-                (r.onPhone ? 'Play' : 'Play from watch') + '</button></div>';
+                esc(t(r.onPhone ? 'Play' : 'Play from watch')) + '</button></div>';
       }
     }
 
     html += '<div class="actions">';
-    if (r.onWatch && !r.onPhone) html += '<button class="btn" data-act="save"' + (connected ? '' : ' disabled') + '>Save to phone</button>';
-    if (a.url) html += '<button class="btn" data-act="export">Export .wav</button>';
-    if ((caps & 2) && hasAudio) html += '<button class="btn" data-act="upload">' + (r.uploaded ? 'Upload again' : 'Upload to WebDAV') + '</button>';
-    html += '<button class="btn" data-act="rename">Rename</button>';
-    html += '<button class="btn danger" data-act="delete">Delete</button>';
+    if (r.onWatch && !r.onPhone) html += '<button class="btn" data-act="save"' + (connected ? '' : ' disabled') + '>' + esc(t('Save to phone')) + '</button>';
+    if (a.url) html += '<button class="btn" data-act="export">' + esc(t('Export .wav')) + '</button>';
+    if ((caps & 2) && hasAudio) html += '<button class="btn" data-act="upload">' + esc(t(r.uploaded ? 'Upload again' : 'Upload to WebDAV')) + '</button>';
+    html += '<button class="btn" data-act="rename">' + esc(t('Rename')) + '</button>';
+    html += '<button class="btn danger" data-act="delete">' + esc(t('Delete')) + '</button>';
     html += '</div>';
 
     if ((caps & 1) && hasAudio) {
-      html += '<div class="subhead">Transcribe</div><div class="inline"><select class="field" id="trLang">' +
+      html += '<div class="subhead">' + esc(t('Transcribe')) + '</div><div class="inline"><select class="field" id="trLang">' +
               langOptions(S.settings ? S.settings.lastLang : 'en') + '</select>' +
-              '<button class="btn primary" data-act="transcribe"' + (r.job ? ' disabled' : '') + '>' + (r.transcript ? 'Again' : 'Transcribe') + '</button></div>';
+              '<button class="btn primary" data-act="transcribe"' + (r.job ? ' disabled' : '') + '>' + esc(t(r.transcript ? 'Again' : 'Transcribe')) + '</button></div>';
+    }
+    // A chat model translates the transcript (made first if needed); Whisper only into English.
+    if ((caps & 4) && (r.transcript || ((caps & 1) && hasAudio))) {
+      html += '<div class="subhead">' + esc(t('Translate')) + '</div><div class="inline"><select class="field" id="tlLang">' +
+              langOptions(S.settings ? S.settings.lastTranslateLang : 'en') + '</select>' +
+              '<button class="btn primary" data-act="translate"' + (r.job ? ' disabled' : '') + '>' + esc(t(r.translation ? 'Again' : 'Translate')) + '</button></div>';
+    } else if ((caps & 8) && hasAudio) {
+      html += '<div class="actions"><button class="btn" data-act="translate"' + (r.job ? ' disabled' : '') + '>' + esc(t('Translate to English')) + '</button></div>';
     }
 
     if (r.transcript && !S.transcript && S.transcriptFor !== r.id) {
@@ -661,18 +1512,15 @@ footer .sub { margin-top: 10px; }
         if (S.open === r.id) { S.transcript = res.transcript; renderSheet(); }
       }, function () { S.transcriptFor = null; });
     }
-    if (r.transcript) {
-      html += '<div class="subhead">Transcript' + (S.transcript && S.transcript.estimated ? ' · times estimated' : '') + '</div>';
-      if (!S.transcript) {
-        html += '<div class="loadbox">Loading…</div>';
-      } else {
-        var segs = S.transcript.segments && S.transcript.segments.length ? S.transcript.segments : [{ start: 0, text: S.transcript.text }];
-        html += '<div class="seglist">' + segs.map(function (s, i) {
-          return '<div class="segline" data-seg="' + i + '"><button class="t" data-seek="' + (s.start || 0) + '">' +
-                 (S.transcript.estimated ? '~' : '') + clock(s.start || 0) + '</button><span>' + esc(s.text) + '</span></div>';
-        }).join('') + '</div>';
-        html += '<div class="actions"><button class="btn small" data-act="copy">Copy text</button></div>';
-      }
+    if (r.translation && !S.translation && S.translationFor !== r.id) {
+      S.translationFor = r.id;
+      rpc({ type: 'translation', id: r.id }).then(function (res) {
+        if (S.open === r.id) { S.translation = res.translation; renderSheet(); }
+      }, function () { S.translationFor = null; });
+    }
+    if (r.transcript) html += textBlock(t('Transcript'), S.transcript, 'copy');
+    if (r.translation) {
+      html += textBlock(t('Translation') + (S.translation ? ' · ' + langName(S.translation.lang) : ''), S.translation, 'copyTr');
     }
     sheet.innerHTML = html;
 
@@ -684,17 +1532,37 @@ footer .sub { margin-top: 10px; }
     }
   }
 
+  // A transcript or translation: timed lines that seek the audio, and a copy button.
+  function textBlock(heading, x, copyAct) {
+    var html = '<div class="subhead">' + esc(heading) + (x && x.estimated ? ' · ' + esc(t('times estimated')) : '') + '</div>';
+    if (!x) return html + '<div class="loadbox">' + esc(t('Loading…')) + '</div>';
+    var segs = x.segments && x.segments.length ? x.segments : [{ start: 0, text: x.text }];
+    html += '<div class="seglist">' + segs.map(function (s) {
+      return '<div class="segline" data-start="' + (s.start || 0) + '"><button class="t" data-seek="' + (s.start || 0) + '">' +
+             (x.estimated ? '~' : '') + clock(s.start || 0) + '</button><span>' + esc(s.text) + '</span></div>';
+    }).join('') + '</div>';
+    return html + '<div class="actions"><button class="btn small" data-act="' + copyAct + '">' + esc(t('Copy text')) + '</button></div>';
+  }
+
+  // Highlights the line being played in each list; only the first list scrolls to follow.
   function follow() {
     var el = $('#sheet audio');
-    if (!el || !S.transcript) return;
-    var ms = el.currentTime * 1000, lines = $$('#sheet .segline'), segs = S.transcript.segments || [];
-    var now = 0;
-    segs.forEach(function (s, i) { if ((s.start || 0) <= ms) now = i; });
-    lines.forEach(function (l, i) {
-      var on = i === now && !el.paused;
-      if (on && !l.classList.contains('now')) l.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-      l.classList.toggle('now', on);
+    if (!el) return;
+    var ms = el.currentTime * 1000;
+    $$('#sheet .seglist').forEach(function (list, n) {
+      var lines = $$('.segline', list), now = -1;
+      lines.forEach(function (l, i) { if (+l.getAttribute('data-start') <= ms) now = i; });
+      lines.forEach(function (l, i) {
+        var on = i === now && !el.paused;
+        if (on && n === 0 && !l.classList.contains('now')) l.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        l.classList.toggle('now', on);
+      });
     });
+  }
+
+  function copyText(x) {
+    var text = x ? ((x.segments || []).map(function (s) { return s.text; }).join(' ') || x.text) : '';
+    (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject()).then(function () { toast(t('Copied')); }, function () { toast(t('Copying isn\'t allowed here')); });
   }
 
   $('#sheet').addEventListener('click', function (e) {
@@ -714,7 +1582,7 @@ footer .sub { margin-top: 10px; }
     if (e.target.id === 'renameSave') {
       var name = $('#renameField').value.trim();
       S.renaming = false;
-      rpc({ type: 'rename', id: r.id, name: name }).then(function () { toast('Renamed'); }, function (err) { toast(err.message); });
+      rpc({ type: 'rename', id: r.id, name: name }).then(function () { toast(t('Renamed')); }, function (err) { toast(err.message); });
       r.name = name;
       renderSheet();
       renderRecordings();
@@ -732,24 +1600,30 @@ footer .sub { margin-top: 10px; }
       if (S.settings) S.settings.lastLang = lang;
       renderSettings();
       rpc({ type: 'transcribe', id: r.id, lang: lang }).catch(function (err) { toast(err.message); });
+    } else if (act === 'translate') {
+      var sel = $('#tlLang'), tl = sel ? sel.value : 'en';
+      if (S.settings && sel) S.settings.lastTranslateLang = tl;
+      renderSettings();
+      rpc({ type: 'translate', id: r.id, lang: tl }).catch(function (err) { toast(err.message); });
     } else if (act === 'rename') {
       S.renaming = true;
       renderSheet();
       var f = $('#renameField');
       if (f) { f.focus(); f.select(); }
     } else if (act === 'copy') {
-      var text = (S.transcript.segments || []).map(function (s) { return s.text; }).join(' ') || S.transcript.text;
-      (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject()).then(function () { toast('Copied'); }, function () { toast('Copying isn\'t allowed here'); });
+      copyText(S.transcript);
+    } else if (act === 'copyTr') {
+      copyText(S.translation);
     } else if (act === 'delete') {
-      var opts = [];
-      if (r.onWatch && (r.onPhone || r.transcript)) opts.push({ label: 'Delete from watch', value: 'watch' });
-      if (r.onPhone || r.transcript) opts.push({ label: r.onWatch ? 'Delete from phone' : 'Delete', value: 'phone', danger: !r.onWatch });
-      if (r.onWatch && (r.onPhone || r.transcript)) opts.push({ label: 'Delete everywhere', value: 'all', danger: true });
-      if (!opts.length) opts.push({ label: 'Delete', value: 'watch', danger: true });
-      ask('Delete "' + title(r) + '"?', opts).then(function (where) {
+      var opts = [], text = r.transcript || r.translation;
+      if (r.onWatch && (r.onPhone || text)) opts.push({ label: t('Delete from watch'), value: 'watch' });
+      if (r.onPhone || text) opts.push({ label: t(r.onWatch ? 'Delete from phone' : 'Delete'), value: 'phone', danger: !r.onWatch });
+      if (r.onWatch && (r.onPhone || text)) opts.push({ label: t('Delete everywhere'), value: 'all', danger: true });
+      if (!opts.length) opts.push({ label: t('Delete'), value: 'watch', danger: true });
+      ask(t('Delete "{title}"?', { title: title(r) }), opts).then(function (where) {
         if (!where) return;
-        if (where === 'all' || (where === 'phone' && !r.onWatch) || (where === 'watch' && !r.onPhone && !r.transcript)) closeSheet();
-        rpc({ type: 'delete', id: r.id, where: where }).then(function () { toast('Deleted'); }, function (err) { toast(err.message); });
+        if (where === 'all' || (where === 'phone' && !r.onWatch) || (where === 'watch' && !r.onPhone && !text)) closeSheet();
+        rpc({ type: 'delete', id: r.id, where: where }).then(function () { toast(t('Deleted')); }, function (err) { toast(err.message); });
       });
     }
   });
@@ -763,15 +1637,15 @@ footer .sub { margin-top: 10px; }
       var used = Math.min(info.capacity, info.used || 0);
       var free = info.free != null ? info.free : info.capacity - used;
       var secs = free / 268 * 505 / (S.settings && S.settings.quality ? 16000 : 8000);
-      $('#watchStore').textContent = size(free) + ' free of ' + size(info.capacity) + ' · about ' + clock(secs * 1000) + ' of recording';
+      $('#watchStore').textContent = t('{free} free of {total} · about {time} of recording', { free: size(free), total: size(info.capacity), time: clock(secs * 1000) });
       $('#watchBar').style.width = (100 * used / info.capacity).toFixed(1) + '%';
     } else {
-      $('#watchStore').textContent = st.watch && st.watch.connected ? 'Checking…' : 'Not connected';
+      $('#watchStore').textContent = t(st.watch && st.watch.connected ? 'Checking…' : 'Not connected');
     }
     var u = st.usage;
     if (u) {
       var rate = S.settings && S.settings.quality ? 8110 : 4055;
-      $('#phoneStore').textContent = size(u.usedBytes) + ' used · ' + size(u.freeBytes) + ' free · about ' + clock(u.freeBytes / rate * 1000) + ' of recording';
+      $('#phoneStore').textContent = t('{used} used · {free} free · about {time} of recording', { used: size(u.usedBytes), free: size(u.freeBytes), time: clock(u.freeBytes / rate * 1000) });
       $('#phoneBar').style.width = (100 * u.usedChars / u.budgetChars).toFixed(1) + '%';
     }
   }
@@ -781,6 +1655,7 @@ footer .sub { margin-top: 10px; }
     var s = S.settings;
     if (!s) return;
     $('#langSelect').innerHTML = langOptions(s.lastLang);
+    $('#tlLangSelect').innerHTML = langOptions(s.lastTranslateLang);
     $$('[data-setting]').forEach(function (el) {
       var key = el.getAttribute('data-setting'), v = get(s, key);
       if (el.classList.contains('seg')) {
@@ -794,10 +1669,17 @@ footer .sub { margin-top: 10px; }
     var p = s.transcription.provider;
     $('#openaiBox').classList.toggle('hidden', p !== 'openai');
     $('#haBox').classList.toggle('hidden', p !== 'ha');
-    $('#qualityInfo').textContent = s.quality ? '16 kHz, about 2 minutes per MB' : '8 kHz, about 4 minutes per MB';
-    $('#targetInfo').textContent = s.target ? 'Streams to the phone; falls back to the watch if the phone drops' : 'Works without the phone';
-    var lang = S.languages.filter(function (l) { return l.code === s.lastLang; })[0];
-    $('#autoTrInfo').textContent = 'In ' + (lang ? lang.name : s.lastLang) + ', the last language you picked';
+    var x = s.translation.provider;
+    $('#chatBox').classList.toggle('hidden', x !== 'chat');
+    $('#whisperBox').classList.toggle('hidden', x !== 'whisper');
+    $('#tlLangRow').classList.toggle('hidden', x !== 'chat');
+    $('#whisperHint').textContent = t(p === 'openai'
+      ? 'Uses the OpenAI-compatible transcription service above to translate the audio. Whisper translates into English only.'
+      : 'Choose OpenAI-compatible under Transcription first: Whisper translation uses that service.');
+    $('#qualityInfo').textContent = t(s.quality ? '16 kHz, about 2 minutes per MB' : '8 kHz, about 4 minutes per MB');
+    $('#gainInfo').textContent = t(['For loud places', 'No boost', 'For quiet voices', 'From further away', 'Very quiet; may hiss'][s.gain] || 'No boost');
+    $('#targetInfo').textContent = t(s.target ? 'Streams to the phone; falls back to the watch if the phone drops' : 'Works without the phone');
+    $('#autoTrInfo').textContent = t('In {lang}, the last language you picked', { lang: langName(s.lastLang) });
   }
 
   var saveTimer = null;
@@ -809,14 +1691,17 @@ footer .sub { margin-top: 10px; }
         if (S.state) S.state.caps = capsOf(S.settings);
         renderSettings();
         renderSheet();
-      }, function (err) { toast('Not saved: ' + err.message); });
+      }, function (err) { toast(t('Not saved: {msg}', { msg: err.message })); });
     }, delay == null ? 500 : delay);
   }
 
   function capsOf(s) {
-    var t = s.transcription, ready = t.provider === 'openai' ? !!(t.openai.baseUrl && t.openai.model)
-      : t.provider === 'ha' ? !!(t.ha.url && t.ha.token && t.ha.entity) : false;
-    return (ready ? 1 : 0) | (/^https?:\/\//i.test(s.webdav.url || '') ? 2 : 0);
+    var tr = s.transcription, ready = tr.provider === 'openai' ? !!(tr.openai.baseUrl && tr.openai.model)
+      : tr.provider === 'ha' ? !!(tr.ha.url && tr.ha.token && tr.ha.entity) : false;
+    var x = s.translation || {};
+    var chat = x.provider === 'chat' && !!(x.chat && x.chat.baseUrl && x.chat.model);
+    var whisper = x.provider === 'whisper' && tr.provider === 'openai' && ready;
+    return (ready ? 1 : 0) | (/^https?:\/\//i.test(s.webdav.url || '') ? 2 : 0) | (chat ? 4 : 0) | (whisper ? 8 : 0);
   }
 
   document.addEventListener('click', function (e) {
@@ -850,9 +1735,9 @@ footer .sub { margin-top: 10px; }
   $$('[data-test]').forEach(function (b) {
     b.addEventListener('click', function () {
       var what = b.getAttribute('data-test'), out = b.parentNode.querySelector('.result');
-      var cfg = what === 'webdav' ? S.settings.webdav : S.settings.transcription[what];
+      var cfg = what === 'webdav' ? S.settings.webdav : what === 'chat' ? S.settings.translation.chat : S.settings.transcription[what];
       out.className = 'result';
-      out.textContent = 'Testing…';
+      out.textContent = t('Testing…');
       b.disabled = true;
       rpc({ type: 'test', what: what, config: cfg }).then(function (r) {
         out.className = 'result ok';
@@ -873,18 +1758,40 @@ footer .sub { margin-top: 10px; }
     document.location = 'pebblejs://close#' + (bridge ? '' : payload);
   });
 
+  // Classic flow: settings are kept here and returned when the page closes; nothing else can run.
+  function classicHandle(msg) {
+    if (msg.type === 'init' || msg.type === 'refresh') {
+      return Promise.resolve({ ok: true, settings: classic.settings, state: classic.state, recordings: [],
+                               languages: classic.languages });
+    }
+    if (msg.type === 'settings') return Promise.resolve({ ok: true, settings: msg.settings });
+    return Promise.reject(new Error(t('Turn on the plugins / permissions preview in the Pebble app to do this.')));
+  }
+
+  function showClassic() {
+    ['#recorder', '#recsHead', '#recs'].forEach(function (sel) { $(sel).classList.add('hidden'); });
+    $$('.test').forEach(function (el) { el.classList.add('hidden'); });
+    var b = $('#banner');
+    b.innerHTML = '<b>' + esc(t('Live settings are off')) + '</b><br><span class="sub">' +
+      esc(t('To control the recorder and manage recordings here, and for Voice Recorder to use the microphone, turn on Settings → Plugins → Plugins / permissions preview in the Pebble app. You can still change the settings below.')) +
+      '</span>';
+    b.classList.add('show');
+    $('#saveNote').textContent = t('Changes are saved when you tap Done.');
+  }
+
   // ---- Start -------------------------------------------------------------------------------------
   function start() {
     if (S.started) return;
     S.started = true;
-    rpc({ type: 'init' }).then(function (snap) {
+    rpc({ type: 'init', lang: LANG }).then(function (snap) {
       apply(snap);
       $('#banner').classList.remove('show');
+      if (classic) showClassic();
       var info = S.state.watch && S.state.watch.info;
       renderSettings();
       renderState();
       renderRecordings();
-      if (info && info.features & 1) $('#watchName').textContent = 'Watch with speaker';
+      if (info && info.features & 1) $('#watchName').textContent = t('Watch with speaker');
     }, function (err) {
       S.started = false;
       offline(err.message);
@@ -893,10 +1800,11 @@ footer .sub { margin-top: 10px; }
 
   function offline(why) {
     var b = $('#banner');
-    b.innerHTML = '<b>Open Voice Recorder on your watch</b><br><span class="sub">Settings talk to the watch app while it runs. Open it, then come back here.' +
+    b.innerHTML = '<b>' + esc(t('Open Voice Recorder on your watch')) + '</b><br><span class="sub">' +
+                  esc(t('Settings talk to the watch app while it runs. Open it, then come back here.')) +
                   (why ? ' (' + esc(why) + ')' : '') + '</span>';
     b.classList.add('show');
-    $('#conn').innerHTML = '<span class="dot"></span><span>Waiting for the watch app</span>';
+    $('#conn').innerHTML = '<span class="dot"></span><span>' + esc(t('Waiting for the watch app')) + '</span>';
   }
 
   // Demo mode, when opened outside the Pebble app (for previewing the page).
@@ -906,6 +1814,7 @@ footer .sub { margin-top: 10px; }
       if (msg.type === 'init' || msg.type === 'refresh') return Promise.resolve(JSON.parse(JSON.stringify({ ok: true, settings: D.settings, state: D.state, recordings: D.recordings, languages: D.languages })));
       if (msg.type === 'settings') { D.settings = msg.settings; return Promise.resolve({ ok: true, settings: D.settings }); }
       if (msg.type === 'transcript') return Promise.resolve({ ok: true, transcript: D.transcript });
+      if (msg.type === 'translation') return Promise.resolve({ ok: true, translation: D.translation });
       if (msg.type === 'audio') {
         var rate = 8000, n = rate * 4, bytes = new Uint8Array((Math.ceil(n / 505)) * 256);
         return Promise.resolve({ ok: true, rate: 0, samples: n, b64: btoa(String.fromCharCode.apply(null, Array.prototype.slice.call(bytes))) });
@@ -924,21 +1833,25 @@ footer .sub { margin-top: 10px; }
     make: function () {
       var now = Math.floor(Date.now() / 1000);
       return {
-        settings: { quality: 0, target: 0, quickLaunch: 1, lastLang: 'en', autoSave: 'off', autoTranscribe: true, autoUpload: false, phoneBudgetMB: 5,
+        settings: { quality: 0, gain: 1, target: 0, quickLaunch: 1, lastLang: 'en', lastTranslateLang: 'fr', autoSave: 'off', autoTranscribe: true, autoUpload: false, phoneBudgetMB: 5,
           transcription: { provider: 'openai', openai: { baseUrl: 'https://api.openai.com/v1', apiKey: '', model: 'whisper-1' }, ha: { url: '', token: '', entity: 'stt.faster_whisper' } },
+          translation: { provider: 'chat', chat: { baseUrl: 'https://api.openai.com/v1', apiKey: '', model: 'gpt-4o-mini' } },
           webdav: { url: '', username: '', password: '', folder: 'Voice Recorder', uploadTranscript: true } },
         state: { watch: { connected: true, info: { capacity: 1048576, used: 248000, free: 800576, features: 1 } }, recorder: { state: 0, elapsed: 0, at: Date.now() },
-          usage: { usedChars: 640000, budgetChars: 5242880, freeBytes: 3452160, usedBytes: 480000 }, caps: 3 },
+          usage: { usedChars: 640000, budgetChars: 5242880, freeBytes: 3452160, usedBytes: 480000 }, caps: 7 },
         recordings: [
-          { id: 1, created: now - 86400 * 2, samples: 8000 * 74, rate: 0, name: 'Groceries', onWatch: false, onPhone: true, phoneBytes: 150000, transcript: true, lang: 'en', uploaded: true },
+          { id: 1, created: now - 86400 * 2, samples: 8000 * 74, rate: 0, name: 'Groceries', onWatch: false, onPhone: true, phoneBytes: 150000, transcript: true, lang: 'en', translation: true, xlang: 'fr', uploaded: true },
           { id: 2, created: now - 3600 * 5, samples: 16000 * 21, rate: 1, name: '', onWatch: true, watchBytes: 172000, onPhone: false, transcript: false, lost: 4 },
           { id: 3, created: now - 600, samples: 8000 * 12, rate: 0, name: '', onWatch: true, watchBytes: 49000, onPhone: true, phoneBytes: 49000, transcript: true, lang: 'fr', job: { kind: 'upload', status: 'running', pct: 40 } }
         ],
         languages: [{ code: 'en', name: 'English' }, { code: 'ar', name: 'Arabic' }, { code: 'fr', name: 'French' }, { code: 'es', name: 'Spanish' }],
-        transcript: { lang: 'en', estimated: false, segments: [{ start: 0, text: 'Milk, eggs and the good bread from the corner shop.' }, { start: 4200, text: 'Call the plumber about the kitchen sink before Friday.' }] }
+        transcript: { lang: 'en', estimated: false, segments: [{ start: 0, text: 'Milk, eggs and the good bread from the corner shop.' }, { start: 4200, text: 'Call the plumber about the kitchen sink before Friday.' }] },
+        translation: { lang: 'fr', estimated: false, segments: [{ start: 0, text: 'Du lait, des œufs et le bon pain de l\'épicerie du coin.' }, { start: 4200, text: 'Appeler le plombier pour l\'évier de la cuisine avant vendredi.' }] }
       };
     }
   };
+
+  translatePage(document.body);
 
   if (bridge) {
     window.Pebble.addEventListener('message', function (e) { if (e.target === 'pkjs') onPush(e.data); });

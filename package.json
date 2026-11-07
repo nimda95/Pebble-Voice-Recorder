@@ -1,7 +1,7 @@
 {
   "name": "voice-recorder",
   "author": "Aymane Taibi",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "keywords": [
     "pebble-app",
     "voice",
@@ -97,6 +97,16 @@
         },
         {
           "type": "bitmap",
+          "name": "AB_VOL_UP",
+          "file": "images/ab_vol_up.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "AB_VOL_DOWN",
+          "file": "images/ab_vol_down.png"
+        },
+        {
+          "type": "bitmap",
           "name": "AB_CHECK",
           "file": "images/ab_check.png"
         },
@@ -139,6 +149,31 @@
           "type": "bitmap",
           "name": "MENU_CHECK_WHITE",
           "file": "images/menu_check_white.png"
+        },
+        {
+          "type": "raw",
+          "name": "STRINGS_FR",
+          "file": "strings/fr.bin"
+        },
+        {
+          "type": "raw",
+          "name": "STRINGS_DE",
+          "file": "strings/de.bin"
+        },
+        {
+          "type": "raw",
+          "name": "STRINGS_ES",
+          "file": "strings/es.bin"
+        },
+        {
+          "type": "raw",
+          "name": "STRINGS_IT",
+          "file": "strings/it.bin"
+        },
+        {
+          "type": "raw",
+          "name": "STRINGS_PT",
+          "file": "strings/pt.bin"
         }
       ]
     }

@@ -3,3 +3,5 @@ node_modules/
 .lock-waf*
 *.pyc
 screenshots/
+.dev/
+src/pkjs/config_page.js

@@ -9,9 +9,11 @@ var CHUNK_BLOCKS = 32;  // 8 KB of audio per key
 
 var DEFAULTS = {
   quality: 0,            // 0 standard (8 kHz), 1 high (16 kHz)
+  gain: 1,               // mic gain step: 0 -6 dB, 1 0 dB, 2 +6, 3 +12, 4 +18
   target: 0,             // 0 watch, 1 phone
   quickLaunch: 1,        // start recording when opened with Quick Launch
   lastLang: 'en',
+  lastTranslateLang: 'en',
   autoSave: 'off',       // 'off' | 'copy' | 'move'
   autoTranscribe: false,
   autoUpload: false,
@@ -20,6 +22,10 @@ var DEFAULTS = {
     provider: 'none',    // 'none' | 'openai' | 'ha'
     openai: { baseUrl: 'https://api.openai.com/v1', apiKey: '', model: 'whisper-1' },
     ha: { url: '', token: '', entity: 'stt.faster_whisper', languages: null }
+  },
+  translation: {
+    provider: 'none',    // 'none' | 'chat' (any language) | 'whisper' (into English, from the audio)
+    chat: { baseUrl: 'https://api.openai.com/v1', apiKey: '', model: 'gpt-4o-mini' }
   },
   webdav: { url: '', username: '', password: '', folder: 'Voice Recorder', uploadTranscript: true }
 };
@@ -57,6 +63,7 @@ function saveIndex() {
 
 function audioKey(id, n) { return 'vr.a.' + id + '.' + n; }
 function transcriptKey(id) { return 'vr.t.' + id; }
+function translationKey(id) { return 'vr.x.' + id; }
 
 function isQuota(e) {
   return e && (e.name === 'QuotaExceededError' || e.code === 22 || /quota|full|exceed/i.test(String(e.message || e)));
@@ -80,7 +87,9 @@ function updateSettings(patch) {
 
 function usedChars() {
   var n = 0;
-  Object.keys(index).forEach(function (id) { n += (index[id].chars || 0) + (index[id].tchars || 0); });
+  Object.keys(index).forEach(function (id) {
+    n += (index[id].chars || 0) + (index[id].tchars || 0) + (index[id].xchars || 0);
+  });
   return n;
 }
 
@@ -113,7 +122,8 @@ function put(meta) {
 
 function ensure(id, fields) {
   var m = index[id] || { id: id, created: Math.floor(Date.now() / 1000), samples: 0, rate: 0, name: '',
-                         audio: false, transcript: false, uploaded: false, blocks: 0, chars: 0, tchars: 0, lost: 0 };
+                         audio: false, transcript: false, translation: false, uploaded: false, blocks: 0,
+                         chars: 0, tchars: 0, xchars: 0, lost: 0 };
   Object.keys(fields || {}).forEach(function (k) { m[k] = fields[k]; });
   index[id] = m;
   return m;
@@ -137,11 +147,13 @@ function rekey(oldId, newId) {
       localStorage.removeItem(audioKey(oldId, n));
     }
   }
-  var t = localStorage.getItem(transcriptKey(oldId));
-  if (t !== null) {
-    localStorage.setItem(transcriptKey(newId), t);
-    localStorage.removeItem(transcriptKey(oldId));
-  }
+  [transcriptKey, translationKey].forEach(function (key) {
+    var t = localStorage.getItem(key(oldId));
+    if (t !== null) {
+      localStorage.setItem(key(newId), t);
+      localStorage.removeItem(key(oldId));
+    }
+  });
   m.id = newId;
   index[newId] = m;
   delete index[oldId];
@@ -170,6 +182,7 @@ function deleteAudio(id) {
 function remove(id) {
   deleteAudio(id);
   localStorage.removeItem(transcriptKey(id));
+  localStorage.removeItem(translationKey(id));
   delete index[id];
   saveIndex();
 }
@@ -300,6 +313,33 @@ function deleteTranscript(id) {
   }
 }
 
+// ---- Translations -------------------------------------------------------------------------------
+// Same shape as a transcript: { lang, segments: [{ start, end, text }], estimated, ... }
+
+function saveTranslation(id, t) {
+  var json = JSON.stringify(t);
+  localStorage.setItem(translationKey(id), json);
+  var m = ensure(id, {});
+  m.translation = true;
+  m.xlang = t.lang;
+  m.xchars = json.length;
+  saveIndex();
+}
+
+function getTranslation(id) {
+  return readJSON(translationKey(id), null);
+}
+
+function deleteTranslation(id) {
+  localStorage.removeItem(translationKey(id));
+  var m = index[id];
+  if (m) {
+    m.translation = false;
+    m.xchars = 0;
+    saveIndex();
+  }
+}
+
 module.exports = {
   DEFAULTS: DEFAULTS,
   getSettings: getSettings,
@@ -323,5 +363,8 @@ module.exports = {
   saveTranscript: saveTranscript,
   getTranscript: getTranscript,
   deleteTranscript: deleteTranscript,
+  saveTranslation: saveTranslation,
+  getTranslation: getTranslation,
+  deleteTranslation: deleteTranslation,
   isQuota: isQuota
 };

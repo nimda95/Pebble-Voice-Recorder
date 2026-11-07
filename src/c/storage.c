@@ -153,7 +153,7 @@ void storage_init(void) {
         if (b == 0) e.m.flags &= ~RecLocal;
       }
       e.m.flags &= ~RecOpen;
-      if (!(e.m.flags & (RecLocal | RecPhone | RecTranscript))) {
+      if (!(e.m.flags & (RecLocal | RecPhone | RecTranscript | RecTranslation))) {
         persist_delete(key);
         s_slots &= ~((uint64_t)1 << slot);
         continue;
@@ -253,7 +253,7 @@ void storage_delete_local(uint16_t id) {
   }
   e->m.flags &= ~RecLocal;
   e->m.blocks = 0;
-  if (!(e->m.flags & (RecPhone | RecTranscript))) {
+  if (!(e->m.flags & (RecPhone | RecTranscript | RecTranslation))) {
     prv_drop_entry(e);
   } else {
     storage_commit(&e->m);

@@ -1,7 +1,7 @@
 #pragma once
 #include <pebble.h>
 
-#define APP_VERSION "1.0"
+#define APP_VERSION "1.1"
 
 // ---- Audio --------------------------------------------------------------------------------------
 // Audio is stored as IMA ADPCM in 256-byte blocks, the same block layout a WAV file uses
@@ -18,6 +18,28 @@
 typedef enum { QualityStandard = 0, QualityHigh = 1, QualityCount } Quality;
 typedef enum { TargetWatch = 0, TargetPhone = 1, TargetCount } Target;
 
+// Mic gain steps, applied to the samples before encoding (the SDK has no hardware gain).
+typedef enum { GainMinus6 = 0, Gain0, GainPlus6, GainPlus12, GainPlus18, GainCount } MicGain;
+#define GAIN_DEFAULT Gain0
+// Gain in Q8 (256 = 1x) for each step.
+static inline int32_t gain_q8(uint8_t gain) {
+  static const int16_t Q8[GainCount] = { 128, 256, 512, 1024, 2048 };
+  return Q8[gain < GainCount ? gain : GAIN_DEFAULT];
+}
+// Applies a gain with a soft knee above 3/4 of full scale, so loud speech bends instead of
+// clipping hard.
+static inline int16_t gain_apply(int16_t v, int32_t q8) {
+  int32_t x = ((int32_t)v * q8) >> 8;
+  int32_t a = x < 0 ? -x : x;
+  if (a > 24576) {
+    a = 24576 + (a - 24576) / 4;
+    if (a > 32767) a = 32767;
+  }
+  return (int16_t)(x < 0 ? -a : a);
+}
+
+#define VOLUME_DEFAULT 80
+
 static inline uint32_t rate_for_code(uint8_t code) { return code ? 16000 : 8000; }
 // Stored ADPCM bytes per second for a rate code (header bytes included).
 static inline uint32_t adpcm_bytes_per_sec(uint8_t code) {
@@ -33,6 +55,8 @@ static inline uint32_t adpcm_bytes_per_sec(uint8_t code) {
 // ---- Phone capabilities (sent by the phone in its hello) ---------------------------------------
 #define CAP_TRANSCRIBE 0x01
 #define CAP_WEBDAV     0x02
+#define CAP_TRANSLATE    0x04  // into any language (a chat model)
+#define CAP_TRANSLATE_EN 0x08  // into English only (Whisper's translation endpoint)
 
 // ---- Platform sizing ----------------------------------------------------------------------------
 #if defined(PBL_PLATFORM_EMERY) || defined(PBL_PLATFORM_GABBRO)

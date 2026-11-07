@@ -113,6 +113,22 @@ def ab_settings(d):
     circle(d, cx, cy, 2.7, fill=0)
 
 
+def speaker(d):
+    rect(d, 1.2, 6.3, 4.6, 11.7, radius=0.6)
+    poly(d, [(4, 6.3), (9.2, 2.2), (9.2, 15.8), (4, 11.7)])
+
+
+def ab_vol_up(d):
+    speaker(d)
+    rect(d, 10.6, 8, 17, 10, radius=0.5)
+    rect(d, 12.8, 5.8, 14.8, 12.2, radius=0.5)
+
+
+def ab_vol_down(d):
+    speaker(d)
+    rect(d, 10.6, 8, 17, 10, radius=0.5)
+
+
 def ab_check(d):
     line(d, [(2.8, 9.6), (7, 13.8), (15.4, 4.4)], 2.8)
 
@@ -193,6 +209,8 @@ ICONS = [
     ('ab_trash', 18, ab_trash, [('', WHITE)]),
     ('ab_list', 18, ab_list, [('', WHITE)]),
     ('ab_settings', 18, ab_settings, [('', WHITE)]),
+    ('ab_vol_up', 18, ab_vol_up, [('', WHITE)]),
+    ('ab_vol_down', 18, ab_vol_down, [('', WHITE)]),
     ('ab_check', 18, ab_check, [('', WHITE)]),
     ('ab_cross', 18, ab_cross, [('', WHITE)]),
     ('dlg_trash', 40, dlg_trash, [('~color', WHITE), ('~bw', BLACK)]),

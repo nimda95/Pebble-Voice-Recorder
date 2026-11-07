@@ -1,8 +1,5 @@
 #include "ui.h"
-
-static const char *const MONTHS[12] = {
-  "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
-};
+#include "i18n.h"
 
 void fmt_duration(char *buf, size_t size, uint32_t secs) {
   int h = secs / 3600, m = (secs / 60) % 60, s = secs % 60;
@@ -30,12 +27,18 @@ void fmt_size(char *buf, size_t size, uint32_t bytes) {
 
 void fmt_datetime(char *buf, size_t size, time_t t) {
   struct tm *tm = localtime(&t);
+  const char *mon = tr((StrId)(S_MON_1 + tm->tm_mon));
+  // "Nov 7" in English, "7 nov." / "7. Nov." elsewhere.
+  char day[24];
+  UiLang l = i18n_lang();
+  if (l == UiEn) snprintf(day, sizeof(day), "%s %d", mon, tm->tm_mday);
+  else if (l == UiDe) snprintf(day, sizeof(day), "%d. %s", tm->tm_mday, mon);
+  else snprintf(day, sizeof(day), "%d %s", tm->tm_mday, mon);
   if (clock_is_24h_style()) {
-    snprintf(buf, size, "%s %d, %02d:%02d", MONTHS[tm->tm_mon], tm->tm_mday, tm->tm_hour, tm->tm_min);
+    snprintf(buf, size, "%s, %02d:%02d", day, tm->tm_hour, tm->tm_min);
   } else {
     int h = tm->tm_hour % 12;
-    snprintf(buf, size, "%s %d, %d:%02d %s", MONTHS[tm->tm_mon], tm->tm_mday, h ? h : 12,
-             tm->tm_min, tm->tm_hour < 12 ? "AM" : "PM");
+    snprintf(buf, size, "%s, %d:%02d %s", day, h ? h : 12, tm->tm_min, tm->tm_hour < 12 ? "AM" : "PM");
   }
 }
 

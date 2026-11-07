@@ -14,6 +14,10 @@ typedef struct __attribute__((packed)) {
   uint16_t next_id;
   uint32_t phone_free;    // ADPCM bytes the phone can still store
   uint32_t phone_used;
+  // Version 2
+  uint8_t gain;           // MicGain
+  uint8_t volume;         // playback volume, 0-100 (watch only)
+  char tlang[LANG_CODE_LEN];  // last language picked for translation
 } Settings;
 
 extern Settings g_settings;

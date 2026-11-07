@@ -10,7 +10,10 @@ enum {
   RecOpen       = 0x04,  // still being recorded (cleared on save; recovered after a crash)
   RecTranscript = 0x08,  // the phone has a transcript
   RecUploaded   = 0x10,  // uploaded to WebDAV
+  RecTranslation = 0x20, // the phone has a translation
 };
+// Flags the phone owns.
+#define REC_PHONE_FLAGS (RecPhone | RecTranscript | RecUploaded | RecTranslation)
 
 typedef struct __attribute__((packed)) {
   uint16_t id;

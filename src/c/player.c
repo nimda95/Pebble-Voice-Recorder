@@ -2,11 +2,12 @@
 #include "storage.h"
 #include "comm.h"
 #include "adpcm.h"
+#include "settings.h"
+#include "i18n.h"
 
 #if defined(PBL_SPEAKER)
 
 #define FILL_INTERVAL_MS 40
-#define VOLUME 100
 #if BIG_SCREEN
   #define CACHE_BLOCKS 32
 #else
@@ -123,8 +124,8 @@ static void prv_schedule(uint32_t ms) {
 static bool prv_open_stream(void) {
   if (s.stream_open) return true;
   SpeakerPcmFormat fmt = s.rate_code ? SpeakerPcmFormat_16kHz_16bit : SpeakerPcmFormat_8kHz_16bit;
-  if (!speaker_stream_open(fmt, VOLUME)) {
-    s.error = "The speaker is busy.";
+  if (!speaker_stream_open(fmt, g_settings.volume)) {
+    s.error = tr(S_P_BUSY);
     return false;
   }
   s.stream_open = true;
@@ -220,12 +221,16 @@ bool player_available(void) { return true; }
 
 bool player_muted(void) { return speaker_is_muted(); }
 
+void player_set_volume(uint8_t volume) {
+  if (s.stream_open) speaker_set_volume(volume);
+}
+
 bool player_open(uint16_t id) {
   player_close();
   s.error = NULL;
   RecMeta *m = storage_find(id);
   if (!m || !(m->flags & (RecLocal | RecPhone))) {
-    s.error = "No audio for this recording.";
+    s.error = tr(S_P_NO_AUDIO);
     return false;
   }
   s.id = id;
@@ -235,12 +240,12 @@ bool player_open(uint16_t id) {
   s.total_blocks = s.remote ? (m->samples + ADPCM_BLOCK_SAMPLES - 1) / ADPCM_BLOCK_SAMPLES : m->blocks;
   if (s.remote) {
     if (!comm_phone_ready()) {
-      s.error = "Connect your phone to play this recording.";
+      s.error = tr(S_P_CONNECT);
       return false;
     }
     s.cache = malloc(CACHE_BLOCKS * ADPCM_BLOCK_BYTES);
     if (!s.cache) {
-      s.error = "Not enough memory.";
+      s.error = tr(S_P_MEMORY);
       return false;
     }
     s.cache_base = 0;
@@ -349,7 +354,7 @@ void player_on_remote_data(uint16_t id, uint16_t block, const uint8_t *data, uin
 
 void player_on_remote_error(uint16_t id, const char *reason) {
   if (id != s.id) return;
-  s.error = reason && reason[0] ? reason : "The phone couldn't play this recording.";
+  s.error = reason && reason[0] ? reason : tr(S_P_PHONE_FAILED);
   player_pause();
   prv_notify();
 }
@@ -358,6 +363,7 @@ void player_on_remote_error(uint16_t id, const char *reason) {
 
 bool player_available(void) { return false; }
 bool player_muted(void) { return false; }
+void player_set_volume(uint8_t volume) {}
 bool player_open(uint16_t id) { return false; }
 void player_close(void) {}
 void player_play(void) {}
@@ -368,7 +374,7 @@ void player_skip_ms(int32_t delta_ms) {}
 uint32_t player_position_ms(void) { return 0; }
 uint32_t player_duration_ms(void) { return 0; }
 PlayerState player_state(void) { return PlayerStopped; }
-const char *player_error(void) { return "This watch has no speaker."; }
+const char *player_error(void) { return tr(S_NO_SPEAKER); }
 void player_set_listener(PlayerListener listener) {}
 void player_on_remote_data(uint16_t id, uint16_t block, const uint8_t *data, uint16_t len) {}
 void player_on_remote_error(uint16_t id, const char *reason) {}

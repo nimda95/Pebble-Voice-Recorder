@@ -24,6 +24,13 @@ def configure(ctx):
 
 
 def build(ctx):
+    # The watch's translations are resources built from src/c/strings_<lang>.def.
+    import subprocess
+    import sys
+    subprocess.check_call([sys.executable, ctx.path.find_node('tools/build_strings.py').abspath(), '-q'])
+    # The settings page, also embedded in the phone JS for the classic settings flow.
+    subprocess.check_call([sys.executable, ctx.path.find_node('tools/embed_config_page.py').abspath()])
+
     ctx.load('pebble_sdk')
 
     build_worker = os.path.exists('worker_src')

@@ -5,8 +5,10 @@
 #include "comm.h"
 #include "player.h"
 #include "ui.h"
+#include "i18n.h"
 
 static void prv_init(void) {
+  i18n_init();
   settings_load();
   storage_init();
   recorder_init();
@@ -23,6 +25,7 @@ static void prv_deinit(void) {
   comm_deinit();
   storage_deinit();
   settings_save();
+  i18n_deinit();
 }
 
 int main(void) {

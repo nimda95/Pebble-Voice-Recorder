@@ -3,6 +3,7 @@
 #include "recorder.h"
 #include "player.h"
 #include "ui.h"
+#include "i18n.h"
 
 #if BIG_SCREEN
   #define MSG_BLOCKS 24
@@ -313,11 +314,12 @@ void comm_send_simple(uint8_t cmd, uint16_t id, int32_t a) {
 void comm_send_settings(void) {
   OutMsg *m = prv_enqueue(W_SETTINGS, 0);
   if (!m) return;
-  m->nv = 3;
+  m->nv = 4;
   m->v[0] = g_settings.quality;
   m->v[1] = g_settings.target;
   m->v[2] = g_settings.ql_autostart;
-  strncpy(m->str, g_settings.lang, STR_LEN - 1);
+  m->v[3] = g_settings.gain;
+  snprintf(m->str, STR_LEN, "%s %s", g_settings.lang, g_settings.tlang);
   prv_pump();
 }
 
@@ -347,12 +349,13 @@ void comm_send_item(uint8_t cmd, const RecMeta *meta) {
   prv_pump();
 }
 
-void comm_send_rec_begin(uint16_t id, uint8_t rate_code, uint32_t created) {
+void comm_send_rec_begin(uint16_t id, uint8_t rate_code, uint32_t created, uint8_t gain) {
   OutMsg *m = prv_enqueue(W_REC_BEGIN, id);
   if (!m) return;
-  m->nv = 2;
+  m->nv = 3;
   m->v[0] = rate_code;
   m->v[1] = (int32_t)created;
+  m->v[2] = gain;
   prv_pump();
 }
 
@@ -365,8 +368,8 @@ void comm_send_action(uint16_t id, uint8_t action, const char *lang) {
   prv_pump();
 }
 
-void comm_request_transcript(uint16_t id) {
-  comm_send_simple(W_TR_REQ, id, 0);
+void comm_request_transcript(uint16_t id, bool translation) {
+  comm_send_simple(W_TR_REQ, id, translation ? 1 : 0);
 }
 
 void comm_request_play(uint16_t id, uint16_t block, uint16_t count) {
@@ -391,7 +394,7 @@ static void prv_send_hello(void) {
   m->v[1] = (int32_t)storage_used();
   m->v[2] = (player_available() ? FEATURE_SPEAKER : 0) | PBL_IF_ROUND_ELSE(FEATURE_ROUND, 0);
   m->v[3] = MSG_BLOCKS;
-  strncpy(m->str, APP_VERSION, STR_LEN - 1);
+  snprintf(m->str, STR_LEN, "%s %s", APP_VERSION, i18n_code());
   prv_pump();
 }
 
@@ -441,7 +444,7 @@ static void prv_set_job(uint16_t id, uint8_t kind, uint8_t status, uint8_t pct) 
 
 static void prv_apply_phone_item(uint16_t id, uint32_t created, uint32_t samples, uint32_t c,
                                  uint16_t lost, const char *name) {
-  uint8_t pflags = c & (RecPhone | RecTranscript | RecUploaded);
+  uint8_t pflags = c & REC_PHONE_FLAGS;
   uint8_t rate = (c >> 8) & 0xff;
   RecMeta *m = storage_find(id);
   if (!m) {
@@ -453,7 +456,7 @@ static void prv_apply_phone_item(uint16_t id, uint32_t created, uint32_t samples
     strncpy(m->name, name, REC_NAME_LEN - 1);
     storage_commit(m);
   } else {
-    uint8_t flags = (m->flags & ~(RecPhone | RecTranscript | RecUploaded)) | pflags;
+    uint8_t flags = (m->flags & ~REC_PHONE_FLAGS) | pflags;
     bool changed = flags != m->flags || strncmp(m->name, name, REC_NAME_LEN - 1) != 0;
     m->flags = flags;
     strncpy(m->name, name, REC_NAME_LEN - 1);
@@ -471,7 +474,7 @@ static void prv_apply_phone_item(uint16_t id, uint32_t created, uint32_t samples
 static void prv_phone_gone(uint16_t id) {
   RecMeta *m = storage_find(id);
   if (!m || (m->flags & RecOpen)) return;
-  m->flags &= ~(RecPhone | RecTranscript | RecUploaded);
+  m->flags &= ~REC_PHONE_FLAGS;
   if (!(m->flags & RecLocal)) {
     storage_remove(id);
   } else {
@@ -485,12 +488,23 @@ static void prv_end_phone_sync(void) {
   int n = 0;
   for (int i = storage_count() - 1; i >= 0; i--) {
     RecMeta *m = storage_get(i);
-    if (!(s_seen & ((uint64_t)1 << i)) && (m->flags & (RecPhone | RecTranscript | RecUploaded))) {
+    if (!(s_seen & ((uint64_t)1 << i)) && (m->flags & REC_PHONE_FLAGS)) {
       gone[n++] = m->id;
     }
   }
   for (int i = 0; i < n; i++) prv_phone_gone(gone[i]);
   s_phone_sync = false;
+}
+
+// "lang tlang": the last transcription and translation languages.
+static void prv_read_langs(const char *str) {
+  const char *sp = strchr(str, ' ');
+  size_t n = sp ? (size_t)(sp - str) : strlen(str);
+  if (n > 0 && n < LANG_CODE_LEN) {
+    memcpy(g_settings.lang, str, n);
+    g_settings.lang[n] = '\0';
+  }
+  if (sp && sp[1] && strlen(sp + 1) < LANG_CODE_LEN) strcpy(g_settings.tlang, sp + 1);
 }
 
 static void prv_inbox(DictionaryIterator *it, void *ctx) {
@@ -527,7 +541,8 @@ static void prv_inbox(DictionaryIterator *it, void *ctx) {
       if (a >= 0 && a < QualityCount) g_settings.quality = a;
       if (b >= 0 && b < TargetCount) g_settings.target = b;
       g_settings.ql_autostart = c ? 1 : 0;
-      if (str[0]) strncpy(g_settings.lang, str, LANG_CODE_LEN - 1);
+      if (d >= 0 && d < GainCount) g_settings.gain = d;
+      prv_read_langs(str);
       settings_save();
       prv_emit(CommEvPhone, 0, NULL);
       break;
@@ -632,12 +647,11 @@ static void prv_inbox(DictionaryIterator *it, void *ctx) {
     case P_JOB:
       prv_set_job(id, (uint8_t)a, (uint8_t)b, (uint8_t)c);
       if (b == JobDone) {
-        if (a == JobTranscribe) {
-          RecMeta *m = storage_find(id);
-          if (m && !(m->flags & RecTranscript)) {
-            m->flags |= RecTranscript;
-            storage_commit(m);
-          }
+        uint8_t flag = a == JobTranscribe ? RecTranscript : a == JobTranslate ? RecTranslation : 0;
+        RecMeta *m = flag ? storage_find(id) : NULL;
+        if (m && !(m->flags & flag)) {
+          m->flags |= flag;
+          storage_commit(m);
         }
         if (recorder_state() == RecIdle) vibes_short_pulse();
       }
@@ -659,7 +673,7 @@ static void prv_inbox(DictionaryIterator *it, void *ctx) {
       if (m) {
         m->samples = (uint32_t)b;
         m->lost_ds = (uint16_t)d;
-        m->flags = (m->flags & ~RecOpen) | ((uint32_t)c & (RecPhone | RecTranscript | RecUploaded));
+        m->flags = (m->flags & ~RecOpen) | ((uint32_t)c & REC_PHONE_FLAGS);
         storage_commit(m);
         prv_emit(CommEvList, id, NULL);
       }

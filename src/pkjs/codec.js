@@ -255,7 +255,20 @@ function concat(arrays) {
   return out;
 }
 
+// Mic gain, as the watch applies it (src/c/common.h): Q8 factors per step and a soft knee above
+// 3/4 of full scale.
+var GAIN_Q8 = [128, 256, 512, 1024, 2048];
+function gainQ8(step) { return GAIN_Q8[step] || 256; }
+function applyGain(v, q8) {
+  var x = (v * q8) >> 8;
+  var a = x < 0 ? -x : x;
+  if (a > 24576) a = Math.min(32767, 24576 + ((a - 24576) >> 2));
+  return x < 0 ? -a : a;
+}
+
 module.exports = {
+  gainQ8: gainQ8,
+  applyGain: applyGain,
   BLOCK_BYTES: BLOCK_BYTES,
   BLOCK_SAMPLES: BLOCK_SAMPLES,
   decodeBlocks: decodeBlocks,

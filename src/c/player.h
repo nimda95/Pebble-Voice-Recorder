@@ -15,6 +15,8 @@ typedef void (*PlayerListener)(void);
 bool player_available(void);
 // The system mutes the speaker in Settings or during Quiet Time; apps can't override it.
 bool player_muted(void);
+// Changes the volume of what is playing (0-100); new playback uses g_settings.volume.
+void player_set_volume(uint8_t volume);
 
 // Prepares a recording: its watch copy, or the phone copy streamed over Bluetooth.
 bool player_open(uint16_t id);

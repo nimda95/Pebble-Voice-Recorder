@@ -1,7 +1,11 @@
-// Transcription (OpenAI-compatible endpoint, or Wyoming faster-whisper through Home Assistant)
-// and WebDAV uploads.
+// Transcription (OpenAI-compatible endpoint, or Wyoming faster-whisper through Home Assistant),
+// translation (an OpenAI-compatible chat model, or Whisper's translation endpoint) and WebDAV
+// uploads. Errors are i18n.error()s, so they can be shown in the watch's or the page's language.
 
 var codec = require('./codec');
+var i18n = require('./i18n');
+var E = i18n.error;
+var M = i18n.msg;
 
 // ---- HTTP ---------------------------------------------------------------------------------------
 
@@ -17,7 +21,7 @@ function request(opts) {
     try {
       xhr.open(opts.method || 'GET', opts.url, true);
     } catch (e) {
-      reject(new Error('Bad URL: ' + opts.url));
+      reject(E('Bad URL: {url}', { url: opts.url }));
       return;
     }
     Object.keys(opts.headers || {}).forEach(function (h) { xhr.setRequestHeader(h, opts.headers[h]); });
@@ -25,15 +29,15 @@ function request(opts) {
     xhr.onreadystatechange = function () {
       if (xhr.readyState !== 4) return;
       if (xhr.status === 0) {
-        finish(reject, new Error("Couldn't reach " + host(opts.url)));
+        finish(reject, E("Couldn't reach {host}", { host: host(opts.url) }));
         return;
       }
       var json = null;
       try { json = JSON.parse(xhr.responseText); } catch (e) { /* not JSON */ }
       finish(resolve, { status: xhr.status, text: xhr.responseText || '', json: json });
     };
-    xhr.ontimeout = function () { finish(reject, new Error(host(opts.url) + ' took too long to answer')); };
-    xhr.onerror = function () { finish(reject, new Error("Couldn't reach " + host(opts.url))); };
+    xhr.ontimeout = function () { finish(reject, E('{host} took too long to answer', { host: host(opts.url) })); };
+    xhr.onerror = function () { finish(reject, E("Couldn't reach {host}", { host: host(opts.url) })); };
     xhr.send(opts.body === undefined ? null : opts.body);
   });
 }
@@ -146,30 +150,39 @@ function splitAtPauses(pcm, rate) {
 
 // ---- OpenAI-compatible --------------------------------------------------------------------------
 
-function openaiEndpoint(cfg) {
-  var base = trimSlash(cfg.baseUrl || 'https://api.openai.com/v1');
-  return /\/audio\/transcriptions$/.test(base) ? base : base + '/audio/transcriptions';
+// kind: 'transcriptions', or 'translations' (Whisper's, always into English)
+function openaiEndpoint(cfg, kind) {
+  var base = trimSlash(cfg.baseUrl || 'https://api.openai.com/v1').replace(/\/audio\/(transcriptions|translations)$/, '');
+  return base + '/audio/' + (kind || 'transcriptions');
 }
 
-function transcribeOpenAI(pcm, rate, lang, cfg) {
+function apiBase(cfg) {
+  return trimSlash(cfg.baseUrl || 'https://api.openai.com/v1')
+    .replace(/\/(audio\/(transcriptions|translations)|chat\/completions)$/, '');
+}
+
+function transcribeOpenAI(pcm, rate, lang, cfg, kind) {
+  var url = openaiEndpoint(cfg, kind);
   var bytes = codec.wav(codec.normalize(pcm), rate);
   var durationMs = Math.round(pcm.length * 1000 / rate);
   function attempt(format) {
     var fields = [['model', cfg.model || 'whisper-1'], ['response_format', format], ['temperature', '0']];
-    if (lang) fields.push(['language', lang]);
+    if (lang && kind !== 'translations') fields.push(['language', lang]);
     if (format === 'verbose_json') fields.push(['timestamp_granularities[]', 'segment']);
     var mp = multipart(fields, { name: 'recording.wav', type: 'audio/wav', bytes: bytes });
     var headers = { 'Content-Type': mp.type };
     if (cfg.apiKey) headers.Authorization = 'Bearer ' + cfg.apiKey;
-    return request({ method: 'POST', url: openaiEndpoint(cfg), headers: headers, body: mp.body, timeout: 180000 });
+    return request({ method: 'POST', url: url, headers: headers, body: mp.body, timeout: 180000 });
   }
   return attempt('verbose_json').then(function (res) {
     // Some models (e.g. gpt-4o-transcribe) only return plain JSON.
     if (res.status === 400 && /response_format|verbose_json|timestamp/i.test(res.text)) return attempt('json');
     return res;
   }).then(function (res) {
-    if (res.status === 401 || res.status === 403) throw new Error('The API key was refused');
-    if (res.status === 404) throw new Error('No transcription endpoint at ' + openaiEndpoint(cfg));
+    if (res.status === 401 || res.status === 403) throw E('The API key was refused');
+    if (res.status === 404) {
+      throw E(kind === 'translations' ? 'No translation endpoint at {url}' : 'No transcription endpoint at {url}', { url: url });
+    }
     if (res.status < 200 || res.status >= 300) throw new Error(errorText(res));
     var j = res.json || { text: res.text };
     var text = String(j.text || '').trim();
@@ -186,24 +199,27 @@ function transcribeOpenAI(pcm, rate, lang, cfg) {
   });
 }
 
-function testOpenAI(cfg) {
-  var url = trimSlash(cfg.baseUrl || 'https://api.openai.com/v1').replace(/\/audio\/transcriptions$/, '') + '/models';
+// Checks the key and that the model is listed. Returns an i18n.msg().
+function testModels(cfg, fallbackModel) {
   var headers = {};
   if (cfg.apiKey) headers.Authorization = 'Bearer ' + cfg.apiKey;
-  return request({ url: url, headers: headers, timeout: 15000 }).then(function (res) {
-    if (res.status === 401 || res.status === 403) throw new Error('The API key was refused');
+  return request({ url: apiBase(cfg) + '/models', headers: headers, timeout: 15000 }).then(function (res) {
+    if (res.status === 401 || res.status === 403) throw E('The API key was refused');
     if (res.status >= 200 && res.status < 300) {
       var models = res.json && Array.isArray(res.json.data) ? res.json.data.map(function (m) { return m.id; }) : [];
-      var model = cfg.model || 'whisper-1';
+      var model = cfg.model || fallbackModel;
       if (models.length && models.indexOf(model) < 0) {
-        return 'Connected, but "' + model + '" isn\'t in the server\'s model list';
+        return M('Connected, but "{model}" isn\'t in the server\'s model list', { model: model });
       }
-      return 'Connected';
+      return M('Connected');
     }
-    if (res.status === 404) return 'Server reachable (it has no model list to check)';
+    if (res.status === 404) return M('Server reachable (it has no model list to check)');
     throw new Error(errorText(res));
   });
 }
+
+function testOpenAI(cfg) { return testModels(cfg, 'whisper-1'); }
+function testChat(cfg) { return testModels(cfg, 'gpt-4o-mini'); }
 
 // ---- Wyoming faster-whisper through Home Assistant ----------------------------------------------
 // The phone can't open the raw TCP socket Wyoming uses, so this goes through Home Assistant's
@@ -215,8 +231,8 @@ function haHeaders(cfg) { return { Authorization: 'Bearer ' + String(cfg.token |
 function haInfo(cfg) {
   return request({ url: haBase(cfg) + '/api/stt/' + cfg.entity, headers: haHeaders(cfg), timeout: 15000 })
     .then(function (res) {
-      if (res.status === 401) throw new Error('Home Assistant refused the token');
-      if (res.status === 404) throw new Error('No speech-to-text entity "' + cfg.entity + '"');
+      if (res.status === 401) throw E('Home Assistant refused the token');
+      if (res.status === 404) throw E('No speech-to-text entity "{entity}"', { entity: cfg.entity });
       if (res.status < 200 || res.status >= 300 || !res.json) throw new Error(errorText(res));
       return res.json;
     });
@@ -232,7 +248,7 @@ function haLanguage(lang, languages) {
       return languages[k];
     }
   }
-  throw new Error('The speech-to-text engine in Home Assistant doesn\'t support "' + lang + '"');
+  throw E('The speech-to-text engine in Home Assistant doesn\'t support "{lang}"', { lang: lang });
 }
 
 function transcribeHA(pcm, rate, lang, cfg, onProgress) {
@@ -260,8 +276,8 @@ function transcribeHA(pcm, rate, lang, cfg, onProgress) {
           body: codec.pcmBytes(pcm16.subarray(piece.start, piece.end)),
           timeout: 120000
         }).then(function (res) {
-          if (res.status === 401) throw new Error('Home Assistant refused the token');
-          if (res.status === 415) throw new Error('The speech-to-text engine rejected the audio format or language');
+          if (res.status === 401) throw E('Home Assistant refused the token');
+          if (res.status === 415) throw E('The speech-to-text engine rejected the audio format or language');
           if (res.status < 200 || res.status >= 300) throw new Error(errorText(res));
           var text = res.json && res.json.text ? String(res.json.text).trim() : '';
           if (res.json && res.json.result === 'error' && !text) return;
@@ -281,7 +297,7 @@ function transcribeHA(pcm, rate, lang, cfg, onProgress) {
 function testHA(cfg) {
   return haInfo(cfg).then(function (info) {
     var n = (info.languages || []).length;
-    return { message: 'Connected' + (n ? ', ' + n + ' languages' : ''), languages: info.languages || [] };
+    return { message: n ? M('Connected, {n} languages', { n: n }) : M('Connected'), languages: info.languages || [] };
   });
 }
 
@@ -312,10 +328,10 @@ function davEnsureFolder(cfg) {
     chain = chain.then(function () {
       var url = trimSlash(cfg.url) + '/' + parts.slice(0, i + 1).map(encodeURIComponent).join('/') + '/';
       return request({ method: 'MKCOL', url: url, headers: davAuth(cfg), timeout: 20000 }).then(function (res) {
-        if (res.status === 401) throw new Error('The WebDAV server refused the username or password');
+        if (res.status === 401) throw E('The WebDAV server refused the username or password');
         // 201 made, 405 already there, 301/302 some servers redirect existing folders
         if ([200, 201, 204, 301, 302, 405].indexOf(res.status) < 0) {
-          throw new Error('Couldn\'t create the folder "' + p + '" (HTTP ' + res.status + ')');
+          throw E('Couldn\'t create the folder "{folder}" (HTTP {status})', { folder: p, status: res.status });
         }
       });
     });
@@ -328,9 +344,9 @@ function davPut(cfg, name, bytes, type) {
   headers['Content-Type'] = type;
   return request({ method: 'PUT', url: davUrl(cfg, name), headers: headers, body: bytes, timeout: 180000 })
     .then(function (res) {
-      if (res.status === 401) throw new Error('The WebDAV server refused the username or password');
-      if (res.status === 507) throw new Error('The WebDAV server is out of space');
-      if (res.status < 200 || res.status >= 300) throw new Error('Upload failed (HTTP ' + res.status + ')');
+      if (res.status === 401) throw E('The WebDAV server refused the username or password');
+      if (res.status === 507) throw E('The WebDAV server is out of space');
+      if (res.status < 200 || res.status >= 300) throw E('Upload failed (HTTP {status})', { status: res.status });
     });
 }
 
@@ -349,10 +365,10 @@ function testWebDAV(cfg) {
   headers.Depth = '0';
   return request({ method: 'PROPFIND', url: trimSlash(cfg.url) + '/', headers: headers, timeout: 15000 })
     .then(function (res) {
-      if (res.status === 401) throw new Error('The server refused the username or password');
-      if (res.status === 207 || res.status === 200) return 'Connected';
-      if (res.status === 404) throw new Error('No WebDAV folder at that address');
-      throw new Error('The server answered HTTP ' + res.status);
+      if (res.status === 401) throw E('The server refused the username or password');
+      if (res.status === 207 || res.status === 200) return M('Connected');
+      if (res.status === 404) throw E('No WebDAV folder at that address');
+      throw E('The server answered HTTP {status}', { status: res.status });
     });
 }
 
@@ -370,13 +386,100 @@ function webdavReady(w) {
 }
 
 function transcribe(pcm, rate, lang, t, onProgress) {
-  if (t.provider === 'openai') return transcribeOpenAI(pcm, rate, lang, t.openai);
+  if (t.provider === 'openai') return transcribeOpenAI(pcm, rate, lang, t.openai, 'transcriptions');
   if (t.provider === 'ha') return transcribeHA(pcm, rate, lang, t.ha, onProgress);
-  return Promise.reject(new Error('Set up transcription in the phone settings'));
+  return Promise.reject(E('Set up transcription in the phone settings'));
+}
+
+// ---- Translation --------------------------------------------------------------------------------
+
+// What the settings can translate: 'any' language (a chat model), 'en' only (Whisper), or null.
+function translationMode(s) {
+  var x = s.translation || {};
+  if (x.provider === 'chat') return x.chat && trimSlash(x.chat.baseUrl) && x.chat.model ? 'any' : null;
+  if (x.provider === 'whisper') {
+    return s.transcription && s.transcription.provider === 'openai' && transcriptionReady(s.transcription) ? 'en' : null;
+  }
+  return null;
+}
+
+// Whisper's translation endpoint: English text with real segment times, straight from the audio.
+function translateWhisper(pcm, rate, transcription) {
+  return transcribeOpenAI(pcm, rate, null, transcription.openai, 'translations');
+}
+
+function chat(cfg, messages) {
+  var url = apiBase(cfg) + '/chat/completions';
+  var headers = { 'Content-Type': 'application/json' };
+  if (cfg.apiKey) headers.Authorization = 'Bearer ' + cfg.apiKey;
+  var body = JSON.stringify({ model: cfg.model || 'gpt-4o-mini', temperature: 0, messages: messages });
+  return request({ method: 'POST', url: url, headers: headers, body: body, timeout: 120000 }).then(function (res) {
+    if (res.status === 401 || res.status === 403) throw E('The API key was refused');
+    if (res.status === 404) throw E('No chat endpoint at {url}', { url: url });
+    if (res.status < 200 || res.status >= 300) throw new Error(errorText(res));
+    var choice = res.json && res.json.choices && res.json.choices[0];
+    var content = choice && choice.message && choice.message.content;
+    if (typeof content !== 'string') throw E('The model\'s answer couldn\'t be read');
+    return content.trim();
+  });
+}
+
+// The JSON array of n strings in a model's answer, or null.
+function parseList(text, n) {
+  var a = text.indexOf('['), b = text.lastIndexOf(']');
+  if (a < 0 || b <= a) return null;
+  var list;
+  try { list = JSON.parse(text.slice(a, b + 1)); } catch (e) { return null; }
+  if (!Array.isArray(list) || list.length !== n) return null;
+  return list.map(function (x) { return String(x == null ? '' : x).trim(); });
+}
+
+// Translates transcript segments with a chat model, keeping each segment's times. target and
+// source are English language names ("French"); source may be empty.
+function translateSegments(segments, target, source, cfg, onProgress) {
+  var BATCH = 25;
+  var from = source ? ' from ' + source : '';
+  var system = 'You translate transcripts of voice notes' + from + ' into ' + target + '. The user sends ' +
+               'a JSON array of transcript lines. Reply with only a JSON array of strings: each line ' +
+               'translated, the same number of items, in the same order. Keep names as they are.';
+  var single = 'Translate the user\'s text' + from + ' into ' + target + '. Reply with only the translation.';
+  var out = [];
+  var chain = Promise.resolve();
+  for (var i = 0; i < segments.length; i += BATCH) {
+    (function (start) {
+      chain = chain.then(function () {
+        var batch = segments.slice(start, start + BATCH);
+        var texts = batch.map(function (seg) { return String(seg.text || ''); });
+        if (onProgress) onProgress(100 * start / segments.length);
+        return chat(cfg, [{ role: 'system', content: system }, { role: 'user', content: JSON.stringify(texts) }])
+          .then(function (answer) {
+            var list = parseList(answer, texts.length);
+            if (list) return list;
+            // The model merged or split lines: translate them one at a time instead.
+            return texts.reduce(function (p, text) {
+              return p.then(function (acc) {
+                return chat(cfg, [{ role: 'system', content: single }, { role: 'user', content: text }])
+                  .then(function (t) { return acc.concat([t]); });
+              });
+            }, Promise.resolve([]));
+          })
+          .then(function (list) {
+            batch.forEach(function (seg, k) {
+              out.push({ start: seg.start, end: seg.end, text: list[k] || String(seg.text || '') });
+            });
+          });
+      });
+    })(i);
+  }
+  return chain.then(function () { return out; });
 }
 
 module.exports = {
   transcribe: transcribe,
+  translationMode: translationMode,
+  translateWhisper: translateWhisper,
+  translateSegments: translateSegments,
+  testChat: testChat,
   testOpenAI: testOpenAI,
   testHA: testHA,
   uploadWebDAV: uploadWebDAV,

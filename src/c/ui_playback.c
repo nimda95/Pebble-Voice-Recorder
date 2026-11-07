@@ -1,8 +1,10 @@
-// Playback. With a transcript: one row per timed segment; the highlight follows the audio, Up and
-// Down move between segments (and seek while playing), Select plays or pauses. Without one: a
-// player with Up = back 10 s, Select = play / pause, Down = forward 10 s.
+// Playback. With a transcript or translation: one row per timed segment; the highlight follows
+// the audio, Up and Down move between segments (and seek while playing), Select plays or pauses.
+// Without one: a player with Up = back 10 s, Select = play / pause, Down = forward 10 s.
+// Holding Select switches Up and Down to volume for a few seconds, as in the PebbleOS Music app.
 #include "ui.h"
 #include "storage.h"
+#include "settings.h"
 #include "comm.h"
 #include "player.h"
 
@@ -14,6 +16,9 @@
 #define MAX_SEGMENTS 160
 #define LOAD_TIMEOUT_MS 20000
 #define SKIP_MS 10000
+#define VOLUME_MODE_MS 3000
+#define VOLUME_STEP 10
+#define VOLUME_MIN 10
 
 typedef struct {
   uint32_t start_ms;
@@ -26,7 +31,7 @@ static StatusBarLayer *s_status_bar;
 static MenuLayer *s_menu;
 static TextLayer *s_info;
 static uint16_t s_id;
-static bool s_with_transcript;
+static TextKind s_text;
 static bool s_autoplay;
 static bool s_player_ready;
 static char s_info_buf[96];
@@ -50,7 +55,16 @@ static TextLayer *s_title_layer, *s_time_layer, *s_total_layer, *s_state_layer;
 static char s_title_buf[REC_NAME_LEN + 4], s_time_buf[12], s_total_buf[20];
 
 static AppTimer *s_ui_timer;
-static char s_header_buf[40];
+static char s_header_buf[48];
+
+// Volume mode (hold Select)
+static bool s_vol_mode;
+static bool s_vol_changed;
+static AppTimer *s_vol_timer;
+static GBitmap *s_icon_vol_up, *s_icon_vol_down;
+static ActionBarLayer *s_tr_bar;  // volume +/- over the transcript while in volume mode
+
+static void prv_volume_shown(void);
 
 static GFont prv_text_font(void) {
   return fonts_get_system_font(BIG_SCREEN ? FONT_KEY_GOTHIC_24 : FONT_KEY_GOTHIC_18);
@@ -66,12 +80,11 @@ static bool prv_ensure_player(void) {
   if (!player_available()) return false;
   s_player_ready = player_open(s_id);
   if (s_player_ready && player_muted()) {
-    dialog_message("The speaker is muted in Settings or by Quiet Time.", RESOURCE_ID_DLG_WARNING,
-                   ACCENT_DARK, 3000);
+    dialog_message(tr(S_SPEAKER_MUTED), RESOURCE_ID_DLG_WARNING, ACCENT_DARK, 3000);
   }
   if (!s_player_ready) {
     const char *err = player_error();
-    dialog_message(err ? err : "Can't play this recording.", RESOURCE_ID_DLG_PHONE, ACCENT_DARK, 3000);
+    dialog_message(err ? err : tr(S_CANT_PLAY_THIS), RESOURCE_ID_DLG_PHONE, ACCENT_DARK, 3000);
   }
   return s_player_ready;
 }
@@ -113,14 +126,17 @@ static void prv_draw_header(GContext *ctx, const Layer *cell, uint16_t section, 
   RecMeta *m = storage_find(s_id);
   uint32_t total = m ? storage_duration_ms(m) : 0;
   fmt_duration(dur, sizeof(dur), (total + 500) / 1000);
-  if (s_player_ready) {
+  if (s_vol_mode) {
+    snprintf(s_header_buf, sizeof(s_header_buf), tr(S_VOLUME_FMT), g_settings.volume);
+  } else if (s_player_ready) {
     fmt_duration(pos, sizeof(pos), player_position_ms() / 1000);
-    const char *st = player_state() == PlayerPlaying ? "Playing" :
-                     player_state() == PlayerBuffering ? "Loading" : "Paused";
+    const char *st = tr(player_state() == PlayerPlaying ? S_PLAYING :
+                        player_state() == PlayerBuffering ? S_LOADING : S_PAUSED);
     snprintf(s_header_buf, sizeof(s_header_buf), "%s %s / %s", st, pos, dur);
+  } else if (player_available()) {
+    snprintf(s_header_buf, sizeof(s_header_buf), tr(S_SELECT_TO_PLAY_FMT), dur);
   } else {
-    snprintf(s_header_buf, sizeof(s_header_buf), "%s%s", dur,
-             player_available() ? ", Select to play" : "");
+    snprintf(s_header_buf, sizeof(s_header_buf), "%s", dur);
   }
 #if defined(PBL_ROUND)
   // The basic header is left-aligned, which the round screen cuts off.
@@ -145,7 +161,7 @@ static void prv_draw_row(GContext *ctx, const Layer *cell, MenuIndex *idx, void 
   graphics_context_set_text_color(ctx, hl ? GColorWhite : GColorBlack);
   GTextAlignment align = PBL_IF_ROUND_ELSE(GTextAlignmentCenter, GTextAlignmentLeft);
   if (idx->row >= s_seg_count) {
-    graphics_draw_text(ctx, "Rest of the text is on the phone", prv_time_font(),
+    graphics_draw_text(ctx, tr(S_REST_ON_PHONE), prv_time_font(),
                        GRect(ROW_PAD, 4, b.size.w - 2 * ROW_PAD, b.size.h - 4),
                        GTextOverflowModeWordWrap, align, NULL);
     return;
@@ -183,7 +199,7 @@ static void prv_follow(void) {
 }
 
 static void prv_row_select(MenuLayer *m, MenuIndex *idx, void *ctx) {
-  if (!player_available()) return;
+  if (!player_available() || !s_seg_count) return;
   if (prv_playing()) {
     player_pause();
     return;
@@ -244,7 +260,7 @@ static void prv_tr_end(uint16_t id) {
   s_load_timer = NULL;
   s_loaded = true;
   if (s_seg_count == 0) {
-    prv_show_info("The transcript is empty.");
+    prv_show_info(tr(s_text == TextTranslation ? S_TL_EMPTY : S_TR_EMPTY));
     return;
   }
   layer_set_hidden(text_layer_get_layer(s_info), true);
@@ -260,7 +276,7 @@ static void prv_tr_fail(uint16_t id, const char *reason) {
   if (id != s_id) return;
   if (s_load_timer) app_timer_cancel(s_load_timer);
   s_load_timer = NULL;
-  prv_show_info(reason && reason[0] ? reason : "No transcript for this recording.");
+  prv_show_info(reason && reason[0] ? reason : tr(s_text == TextTranslation ? S_TL_NONE : S_TR_NONE));
 }
 
 static const TranscriptSink SINK = {
@@ -272,7 +288,7 @@ static const TranscriptSink SINK = {
 
 static void prv_load_timeout(void *ctx) {
   s_load_timer = NULL;
-  if (!s_loaded) prv_show_info("The phone didn't send the transcript. Try again.");
+  if (!s_loaded) prv_show_info(tr(s_text == TextTranslation ? S_TL_TIMEOUT : S_TR_TIMEOUT));
 }
 
 // ---- Plain player -------------------------------------------------------------------------------
@@ -281,25 +297,99 @@ static void prv_update_player(void) {
   if (!s_time_layer) return;
   fmt_duration(s_time_buf, sizeof(s_time_buf), player_position_ms() / 1000);
   text_layer_set_text(s_time_layer, s_time_buf);
-  const char *st = "Paused";
-  switch (player_state()) {
-    case PlayerPlaying: st = "Playing"; break;
-    case PlayerBuffering: st = "Loading from phone"; break;
-    case PlayerEnded: st = "Finished"; break;
-    default: break;
+  if (s_vol_mode) {
+    static char vol[24];
+    snprintf(vol, sizeof(vol), tr(S_VOLUME_FMT), g_settings.volume);
+    text_layer_set_text(s_state_layer, vol);
+  } else {
+    StrId st = S_PAUSED;
+    switch (player_state()) {
+      case PlayerPlaying: st = S_PLAYING; break;
+      case PlayerBuffering: st = S_LOADING_FROM_PHONE; break;
+      case PlayerEnded: st = S_FINISHED; break;
+      default: break;
+    }
+    text_layer_set_text(s_state_layer, tr(s_player_ready ? st : S_CANT_PLAY));
   }
-  text_layer_set_text(s_state_layer, s_player_ready ? st : "Can't play");
   action_bar_layer_set_icon_animated(s_action_bar, BUTTON_ID_SELECT,
                                      prv_playing() ? s_icon_pause : s_icon_play, true);
 }
 
-static void prv_player_up(ClickRecognizerRef r, void *ctx) { if (s_player_ready) player_skip_ms(-SKIP_MS); }
-static void prv_player_select(ClickRecognizerRef r, void *ctx) { if (s_player_ready) player_toggle(); }
-static void prv_player_down(ClickRecognizerRef r, void *ctx) { if (s_player_ready) player_skip_ms(SKIP_MS); }
+// ---- Volume -------------------------------------------------------------------------------------
+
+static void prv_volume_end(void *ctx) {
+  s_vol_timer = NULL;
+  s_vol_mode = false;
+  prv_volume_shown();
+}
+
+static void prv_volume_touch(void) {
+  if (s_vol_timer) app_timer_reschedule(s_vol_timer, VOLUME_MODE_MS);
+  else s_vol_timer = app_timer_register(VOLUME_MODE_MS, prv_volume_end, NULL);
+}
+
+static void prv_volume_mode(ClickRecognizerRef r, void *ctx) {
+  if (!player_available()) return;
+  s_vol_mode = true;
+  prv_volume_touch();
+  prv_volume_shown();
+}
+
+static void prv_volume_step(int delta) {
+  int v = g_settings.volume + delta;
+  v = v < VOLUME_MIN ? VOLUME_MIN : v > 100 ? 100 : v;
+  if (v != g_settings.volume) {
+    g_settings.volume = (uint8_t)v;
+    s_vol_changed = true;
+    player_set_volume(g_settings.volume);
+  }
+  prv_volume_touch();
+  prv_volume_shown();
+}
+
+// ---- Transcript clicks ----------------------------------------------------------------------------
+
+static void prv_tr_up(ClickRecognizerRef r, void *ctx) {
+  if (s_vol_mode) prv_volume_step(VOLUME_STEP);
+  else menu_layer_set_selected_next(s_menu, true, MenuRowAlignCenter, true);
+}
+
+static void prv_tr_down(ClickRecognizerRef r, void *ctx) {
+  if (s_vol_mode) prv_volume_step(-VOLUME_STEP);
+  else menu_layer_set_selected_next(s_menu, false, MenuRowAlignCenter, true);
+}
+
+static void prv_tr_select(ClickRecognizerRef r, void *ctx) {
+  MenuIndex idx = menu_layer_get_selected_index(s_menu);
+  prv_row_select(s_menu, &idx, NULL);
+}
+
+static void prv_tr_clicks(void *ctx) {
+  window_single_repeating_click_subscribe(BUTTON_ID_UP, 100, prv_tr_up);
+  window_single_repeating_click_subscribe(BUTTON_ID_DOWN, 100, prv_tr_down);
+  window_single_click_subscribe(BUTTON_ID_SELECT, prv_tr_select);
+  window_long_click_subscribe(BUTTON_ID_SELECT, 0, prv_volume_mode, NULL);
+}
+
+// ---- Player clicks --------------------------------------------------------------------------------
+
+static void prv_player_up(ClickRecognizerRef r, void *ctx) {
+  if (s_vol_mode) prv_volume_step(VOLUME_STEP);
+  else if (s_player_ready) player_skip_ms(-SKIP_MS);
+}
+static void prv_player_select(ClickRecognizerRef r, void *ctx) {
+  if (s_vol_mode) prv_volume_touch();
+  if (s_player_ready) player_toggle();
+}
+static void prv_player_down(ClickRecognizerRef r, void *ctx) {
+  if (s_vol_mode) prv_volume_step(-VOLUME_STEP);
+  else if (s_player_ready) player_skip_ms(SKIP_MS);
+}
 
 static void prv_player_clicks(void *ctx) {
   window_single_repeating_click_subscribe(BUTTON_ID_UP, 400, prv_player_up);
   window_single_click_subscribe(BUTTON_ID_SELECT, prv_player_select);
+  window_long_click_subscribe(BUTTON_ID_SELECT, 0, prv_volume_mode, NULL);
   window_single_repeating_click_subscribe(BUTTON_ID_DOWN, 400, prv_player_down);
 }
 
@@ -340,7 +430,7 @@ static void prv_build_player(Layer *root, GRect b) {
   y += BIG_SCREEN ? 52 : 44;
   char dur[12];
   fmt_duration(dur, sizeof(dur), m ? (storage_duration_ms(m) + 500) / 1000 : 0);
-  snprintf(s_total_buf, sizeof(s_total_buf), "of %s", dur);
+  snprintf(s_total_buf, sizeof(s_total_buf), tr(S_OF_FMT), dur);
   s_total_layer = prv_text(root, GRect(pad, y, w - 2 * pad, BIG_SCREEN ? 30 : 24),
                            fonts_get_system_font(BIG_SCREEN ? FONT_KEY_GOTHIC_24 : FONT_KEY_GOTHIC_18));
   text_layer_set_text(s_total_layer, s_total_buf);
@@ -352,9 +442,35 @@ static void prv_build_player(Layer *root, GRect b) {
 
 // ---- Window -------------------------------------------------------------------------------------
 
+// Shows or hides the volume. Transcript: an action bar with volume icons slides in (the header,
+// which shows the level, can be scrolled away). Player: its action bar icons and state line.
+static void prv_volume_shown(void) {
+  if (s_text) {
+    if (s_vol_mode && !s_tr_bar) {
+      s_tr_bar = action_bar_layer_create();
+      action_bar_layer_set_background_color(s_tr_bar, GColorBlack);
+      action_bar_layer_set_icon(s_tr_bar, BUTTON_ID_UP, s_icon_vol_up);
+      action_bar_layer_set_icon(s_tr_bar, BUTTON_ID_DOWN, s_icon_vol_down);
+      action_bar_layer_set_click_config_provider(s_tr_bar, prv_tr_clicks);
+      action_bar_layer_add_to_window(s_tr_bar, s_window);
+    } else if (!s_vol_mode && s_tr_bar) {
+      action_bar_layer_remove_from_window(s_tr_bar);
+      action_bar_layer_destroy(s_tr_bar);
+      s_tr_bar = NULL;
+      window_set_click_config_provider(s_window, prv_tr_clicks);
+    }
+    if (s_menu) layer_mark_dirty(menu_layer_get_layer(s_menu));
+    return;
+  }
+  if (!s_action_bar) return;
+  action_bar_layer_set_icon_animated(s_action_bar, BUTTON_ID_UP, s_vol_mode ? s_icon_vol_up : s_icon_rewind, true);
+  action_bar_layer_set_icon_animated(s_action_bar, BUTTON_ID_DOWN, s_vol_mode ? s_icon_vol_down : s_icon_forward, true);
+  prv_update_player();
+}
+
 static void prv_ui_tick(void *ctx) {
   s_ui_timer = app_timer_register(prv_playing() ? 250 : 1000, prv_ui_tick, NULL);
-  if (s_with_transcript) {
+  if (s_text) {
     prv_follow();
     if (s_menu) layer_mark_dirty(menu_layer_get_layer(s_menu));
   } else {
@@ -363,7 +479,7 @@ static void prv_ui_tick(void *ctx) {
 }
 
 static void prv_player_changed(void) {
-  if (s_with_transcript) {
+  if (s_text) {
     if (s_menu) layer_mark_dirty(menu_layer_get_layer(s_menu));
   } else {
     prv_update_player();
@@ -376,11 +492,17 @@ static void prv_load(Window *window) {
   s_player_ready = false;
   s_loaded = false;
   s_follow = -1;
+  s_vol_mode = false;
+  s_vol_changed = false;
+  if (player_available()) {
+    s_icon_vol_up = gbitmap_create_with_resource(RESOURCE_ID_AB_VOL_UP);
+    s_icon_vol_down = gbitmap_create_with_resource(RESOURCE_ID_AB_VOL_DOWN);
+  }
 
   s_status_bar = status_bar_layer_create();
   status_bar_layer_set_colors(s_status_bar, GColorWhite, GColorBlack);
   status_bar_layer_set_separator_mode(s_status_bar, StatusBarLayerSeparatorModeDotted);
-  if (!s_with_transcript) {
+  if (!s_text) {
     layer_set_frame(status_bar_layer_get_layer(s_status_bar),
                     GRect(0, 0, b.size.w - PBL_IF_RECT_ELSE(ACTION_BAR_WIDTH, 0), STATUS_BAR_LAYER_HEIGHT));
     status_bar_layer_set_colors(s_status_bar, GColorClear, GColorBlack);
@@ -388,7 +510,7 @@ static void prv_load(Window *window) {
   layer_add_child(root, status_bar_layer_get_layer(s_status_bar));
   player_set_listener(prv_player_changed);
 
-  if (s_with_transcript) {
+  if (s_text) {
     s_menu = menu_layer_create(GRect(0, STATUS_BAR_LAYER_HEIGHT, b.size.w, b.size.h - STATUS_BAR_LAYER_HEIGHT));
     menu_layer_set_highlight_colors(s_menu, ACCENT_COLOR, GColorWhite);
     menu_layer_set_callbacks(s_menu, NULL, (MenuLayerCallbacks){
@@ -400,7 +522,7 @@ static void prv_load(Window *window) {
       .select_click = prv_row_select,
       .selection_changed = prv_selection_changed,
     });
-    menu_layer_set_click_config_onto_window(s_menu, window);
+    window_set_click_config_provider(window, prv_tr_clicks);
     layer_add_child(root, menu_layer_get_layer(s_menu));
 
     s_info = text_layer_create(GRect(ROW_PAD + 4, b.size.h / 2 - 40, b.size.w - 2 * ROW_PAD - 8, 90));
@@ -409,12 +531,13 @@ static void prv_load(Window *window) {
     layer_add_child(root, text_layer_get_layer(s_info));
 
     comm_set_transcript_sink(&SINK);
+    bool translation = s_text == TextTranslation;
     if (comm_phone_ready()) {
-      prv_show_info("Loading transcript...");
-      comm_request_transcript(s_id);
+      prv_show_info(tr(translation ? S_TL_LOADING : S_TR_LOADING));
+      comm_request_transcript(s_id, translation);
       s_load_timer = app_timer_register(LOAD_TIMEOUT_MS, prv_load_timeout, NULL);
     } else {
-      prv_show_info("Connect your phone to read the transcript.");
+      prv_show_info(tr(translation ? S_TL_CONNECT : S_TR_CONNECT));
     }
   } else {
     prv_build_player(root, b);
@@ -428,7 +551,9 @@ static void prv_load(Window *window) {
 static void prv_unload(Window *window) {
   if (s_ui_timer) app_timer_cancel(s_ui_timer);
   if (s_load_timer) app_timer_cancel(s_load_timer);
-  s_ui_timer = s_load_timer = NULL;
+  if (s_vol_timer) app_timer_cancel(s_vol_timer);
+  s_ui_timer = s_load_timer = s_vol_timer = NULL;
+  if (s_vol_changed) settings_save();  // the volume stays on the watch
   player_set_listener(NULL);
   player_close();
   comm_set_transcript_sink(NULL);
@@ -450,18 +575,23 @@ static void prv_unload(Window *window) {
     s_action_bar = NULL;
     s_time_layer = NULL;
   }
+  if (s_tr_bar) action_bar_layer_destroy(s_tr_bar);
+  s_tr_bar = NULL;
+  if (s_icon_vol_up) gbitmap_destroy(s_icon_vol_up);
+  if (s_icon_vol_down) gbitmap_destroy(s_icon_vol_down);
+  s_icon_vol_up = s_icon_vol_down = NULL;
   status_bar_layer_destroy(s_status_bar);
   window_destroy(s_window);
   s_window = NULL;
 }
 
-void ui_playback_push(uint16_t id, bool with_transcript, bool autoplay) {
-  if (!with_transcript && !player_available()) {
-    dialog_message("This watch has no speaker.", RESOURCE_ID_DLG_WARNING, ACCENT_DARK, 2500);
+void ui_playback_push(uint16_t id, TextKind text, bool autoplay) {
+  if (!text && !player_available()) {
+    dialog_message(tr(S_NO_SPEAKER), RESOURCE_ID_DLG_WARNING, ACCENT_DARK, 2500);
     return;
   }
   s_id = id;
-  s_with_transcript = with_transcript;
+  s_text = text;
   s_autoplay = autoplay && player_available();
   s_window = window_create();
   window_set_window_handlers(s_window, (WindowHandlers){ .load = prv_load, .unload = prv_unload });

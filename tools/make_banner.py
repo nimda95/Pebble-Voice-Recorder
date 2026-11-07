@@ -18,7 +18,7 @@ BEZEL = (24, 24, 27)
 
 # Per platform: screens (file, scale, x, y), left to right.
 LAYOUTS = {
-    'emery': [('02-recording', 1, 336, 40), ('09-transcript', 1, 572, 40)],
+    'emery': [('02-recording', 1, 336, 40), ('12-translation', 1, 572, 40)],
     'flint': [('02-recording', 2, 372, 14)],
     'gabbro': [('02-recording', 1, 392, 18)],
 }
@@ -119,7 +119,7 @@ def main():
     d = ImageDraw.Draw(canvas)
     d.text((x - 3, 104), 'Voice', font=title_font, fill='white')
     d.text((x - 3, 166), 'Recorder', font=title_font, fill='white')
-    for i, line in enumerate(('Voice notes on your wrist,', 'transcribed with timestamps.')):
+    for i, line in enumerate(('Voice notes on your wrist,', 'transcribed and translated.')):
         d.text((x, 254 + i * 27), line, font=tag_font, fill=(255, 255, 255, 228))
 
     canvas.convert('RGB').save(out)

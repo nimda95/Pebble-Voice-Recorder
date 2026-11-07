@@ -3,6 +3,7 @@
 #include "settings.h"
 #include "comm.h"
 #include "adpcm.h"
+#include "i18n.h"
 
 #define STREAM_START_TIMEOUT_MS 6000
 #define FRAME_MS 20                  // the mic delivers 320 samples (20 ms) per callback
@@ -117,12 +118,12 @@ static uint32_t prv_estimated_samples(void) {
 static const char *prv_capture_error(MicCaptureStartResult r) {
   switch (r) {
     case MicCaptureStartErrPermissionDenied:
-      return "Allow the microphone for Voice Recorder in the Pebble app.";
-    case MicCaptureStartErrBusy: return "The microphone is in use.";
-    case MicCaptureStartErrUnavailable: return "This watch has no microphone.";
-    case MicCaptureStartErrNoMemory: return "Not enough memory to record.";
-    case MicCaptureStartErrNotForeground: return "Open the app to record.";
-    default: return "Couldn't start the microphone.";
+      return tr(S_ERR_MIC_PERMISSION);
+    case MicCaptureStartErrBusy: return tr(S_ERR_MIC_BUSY);
+    case MicCaptureStartErrUnavailable: return tr(S_ERR_NO_MIC);
+    case MicCaptureStartErrNoMemory: return tr(S_ERR_REC_MEMORY);
+    case MicCaptureStartErrNotForeground: return tr(S_ERR_NOT_FOREGROUND);
+    default: return tr(S_ERR_MIC_START);
   }
 }
 
@@ -205,15 +206,15 @@ HealthLevel recorder_health(HealthReason *reason) {
 
 const char *recorder_health_text(HealthReason reason) {
   switch (reason) {
-    case HrGood: return "Good";
-    case HrSlowStorage: return "Slow storage";
-    case HrStorageLow: return "Storage low";
-    case HrDropping: return "Dropping audio";
-    case HrPhoneLag: return "Phone lagging";
-    case HrPhoneSilent: return "Phone silent";
-    case HrConnecting: return "Connecting...";
-    case HrPaused: return "Paused";
-    default: return "Ready";
+    case HrGood: return tr(S_H_GOOD);
+    case HrSlowStorage: return tr(S_H_SLOW);
+    case HrStorageLow: return tr(S_H_LOW);
+    case HrDropping: return tr(S_H_DROPPING);
+    case HrPhoneLag: return tr(S_H_PHONE_LAG);
+    case HrPhoneSilent: return tr(S_H_PHONE_SILENT);
+    case HrConnecting: return tr(S_H_CONNECTING);
+    case HrPaused: return tr(S_PAUSED);
+    default: return tr(S_READY);
   }
 }
 
@@ -224,7 +225,7 @@ static void prv_tick(void *ctx) {
   if (s.state != RecRecording) return;
   if (s.mode == ModeLocal) prv_health_tick();
   if (s.mode == ModeStream && recorder_seconds_left() == 0) {
-    s.notice = "Phone storage is full. Saved.";
+    s.notice = tr(S_N_PHONE_FULL_SAVED);
     recorder_stop_save();
     return;
   }
@@ -257,8 +258,8 @@ static void prv_write_block(void) {
   if (!m) return;
   if (m->blocks >= MAX_BLOCKS_PER_REC || storage_free() < BLOCK_COST * 2) {
     s.full = true;
-    s.notice = m->blocks >= MAX_BLOCKS_PER_REC ? "Longest recording reached. Saved."
-                                               : "Watch storage is full. Saved.";
+    s.notice = m->blocks >= MAX_BLOCKS_PER_REC ? tr(S_N_LONGEST)
+                                               : tr(S_N_WATCH_FULL_SAVED);
     if (!s.stop_timer) s.stop_timer = app_timer_register(0, prv_full_stop, NULL);
     return;
   }
@@ -271,7 +272,7 @@ static void prv_write_block(void) {
   }
   if (st != S_SUCCESS) {
     s.full = true;
-    s.notice = "Watch storage is full. Saved.";
+    s.notice = tr(S_N_WATCH_FULL_SAVED);
     if (!s.stop_timer) s.stop_timer = app_timer_register(0, prv_full_stop, NULL);
     return;
   }
@@ -284,8 +285,9 @@ static void prv_mic_data(const int16_t *samples, size_t count, void *ctx) {
   if (s.state != RecRecording || s.mode != ModeLocal) return;
   s.frames++;
   bool decimate = s.rate_code == 0;
+  int32_t gain = gain_q8(g_settings.gain);
   for (size_t i = 0; i < count; i++) {
-    int16_t v = samples[i];
+    int16_t v = gain == 256 ? samples[i] : gain_apply(samples[i], gain);
     if (decimate && !decimator_push(&s.dec, v, &v)) continue;
     if (adpcm_encoder_push(&s.enc, v)) prv_write_block();
   }
@@ -294,7 +296,7 @@ static void prv_mic_data(const int16_t *samples, size_t count, void *ctx) {
 static void prv_mic_stopped(MicCaptureStopReason reason, void *ctx) {
   if (s.state != RecRecording || s.mode != ModeLocal) return;
   if (reason == MicCaptureStopReasonPermissionRevoked) {
-    s.error = "The microphone permission was turned off.";
+    s.error = tr(S_ERR_MIC_REVOKED);
     recorder_stop_save();
     return;
   }
@@ -320,13 +322,13 @@ static bool prv_capture_begin(void) {
 
 static bool prv_start_local(void) {
   if (storage_free() < BLOCK_COST * 16) {
-    s.error = "Watch storage is full. Delete or move recordings first.";
+    s.error = tr(S_ERR_WATCH_FULL);
     return false;
   }
   uint16_t id = prv_alloc_id();
   RecMeta *m = storage_create(id, s.rate_code, (uint32_t)time(NULL), RecLocal | RecOpen);
   if (!m) {
-    s.error = "Too many recordings. Delete some first.";
+    s.error = tr(S_ERR_TOO_MANY);
     return false;
   }
   storage_commit(m);
@@ -419,7 +421,7 @@ static bool prv_start_stream(void) {
   uint16_t id = prv_alloc_id();
   RecMeta *m = storage_create(id, s.rate_code, (uint32_t)time(NULL), RecPhone | RecOpen);
   if (!m) {
-    s.error = "Too many recordings. Delete some first.";
+    s.error = tr(S_ERR_TOO_MANY);
     return false;
   }
   storage_commit(m);
@@ -428,7 +430,7 @@ static bool prv_start_stream(void) {
   s.elapsed_before = 0;
   s.phone_received_ms = 0;
   s.phone_free_at_start = g_settings.phone_free;
-  comm_send_rec_begin(id, s.rate_code, m->created);
+  comm_send_rec_begin(id, s.rate_code, m->created, g_settings.gain);
   if (!prv_stream_open()) {
     comm_send_simple(W_REC_DISCARD, id, 0);
     storage_remove(id);
@@ -457,7 +459,7 @@ static void prv_stream_lost(void) {
   uint8_t rate = s.rate_code;
   prv_reset();
   s.rate_code = rate;
-  s.notice = "Phone stopped answering. Recording on the watch.";
+  s.notice = tr(S_N_PHONE_STOPPED);
   if (prv_start_local()) {
     vibes_double_pulse();
   } else {
@@ -505,13 +507,13 @@ bool recorder_start(void) {
   s.rate_code = g_settings.quality == QualityHigh ? 1 : 0;
   if (g_settings.target == TargetPhone) {
     if (!comm_phone_ready()) {
-      s.notice = "Phone not connected. Saving on the watch.";
+      s.notice = tr(S_N_PHONE_NOT_CONNECTED);
     } else if (g_settings.phone_free < adpcm_bytes_per_sec(s.rate_code) * 10) {
-      s.notice = "Phone storage is full. Saving on the watch.";
+      s.notice = tr(S_N_PHONE_FULL_WATCH);
     } else if (prv_start_stream()) {
       return true;
     } else if (!s.error) {
-      s.notice = "Phone refused the stream. Saving on the watch.";
+      s.notice = tr(S_N_PHONE_REFUSED);
     } else {
       return false;
     }

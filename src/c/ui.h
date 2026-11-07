@@ -1,5 +1,6 @@
 #pragma once
 #include "common.h"
+#include "i18n.h"
 
 // Recorder (the app's first window)
 void ui_recorder_push(void);
@@ -13,8 +14,9 @@ void ui_actions_open(uint16_t id);
 // Settings
 void ui_settings_push(void);
 
-// Playback, with the transcript when there is one
-void ui_playback_push(uint16_t id, bool with_transcript, bool autoplay);
+// Playback: the plain player, or the transcript or translation following the audio
+typedef enum { TextNone = 0, TextTranscript, TextTranslation } TextKind;
+void ui_playback_push(uint16_t id, TextKind text, bool autoplay);
 
 // Dialogs in the PebbleOS style: message with an icon, and choice with a check / cross action bar
 typedef void (*DialogConfirmCallback)(bool confirmed, void *context);

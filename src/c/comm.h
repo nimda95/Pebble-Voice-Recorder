@@ -7,13 +7,13 @@
 
 // Watch -> phone
 enum {
-  W_HELLO = 1,        // A=capacity B=used C=features D=inbox blocks Str=version
+  W_HELLO = 1,        // A=capacity B=used C=features D=inbox blocks Str="version ui-lang"
   W_LIST_BEGIN = 2,   // A=count
   W_LIST_ITEM = 3,    // Id A=created B=samples C=flags|rate<<8|blocks<<16 D=lost_ds Str=name
   W_LIST_END = 4,     // A=used B=capacity C=free
-  W_SETTINGS = 5,     // A=quality B=target C=ql_autostart Str=lang
+  W_SETTINGS = 5,     // A=quality B=target C=ql_autostart D=gain Str="lang tlang"
   W_REC_STATE = 6,    // Id A=state B=elapsed_ms C=mode D=health|reason<<8
-  W_REC_BEGIN = 7,    // Id A=rate_code B=created         (phone recording)
+  W_REC_BEGIN = 7,    // Id A=rate_code B=created C=gain  (phone recording)
   W_REC_PAUSE = 8,    // Id
   W_REC_RESUME = 9,   // Id
   W_REC_END = 10,     // Id A=elapsed_ms
@@ -21,7 +21,7 @@ enum {
   W_AUDIO = 12,       // Id A=first block Data=blocks
   W_AUDIO_END = 13,   // Id A=blocks B=samples C=rate_code D=created
   W_ACTION = 14,      // Id A=action Str=lang
-  W_TR_REQ = 15,      // Id
+  W_TR_REQ = 15,      // Id A=0 transcript, 1 translation
   W_PLAY_REQ = 16,    // Id A=first block B=count
   W_DELETED = 17,     // Id                               (watch copy deleted)
   W_SAVED = 18,       // same fields as W_LIST_ITEM       (new watch recording)
@@ -31,7 +31,7 @@ enum {
 // Phone -> watch
 enum {
   P_HELLO = 101,        // A=caps B=phone_free C=phone_used D=highest phone id
-  P_SETTINGS = 102,     // A=quality B=target C=ql_autostart Str=lang
+  P_SETTINGS = 102,     // A=quality B=target C=ql_autostart D=gain Str="lang tlang"
   P_CONTROL = 103,      // A=control
   P_LIST_REQ = 104,
   P_RENAME = 105,       // Id Str=name
@@ -40,7 +40,7 @@ enum {
   P_PHONE_BEGIN = 108,
   P_PHONE_ITEM = 109,   // Id A=created B=samples C=flags|rate<<8 D=lost_ds Str=name
   P_PHONE_END = 110,
-  P_TR_BEGIN = 111,     // Id A=count B=estimated
+  P_TR_BEGIN = 111,     // Id A=count B=estimated          (transcript or translation)
   P_TR_SEG = 112,       // Id A=index B=start_ms Str=text
   P_TR_END = 113,       // Id
   P_TR_NONE = 114,      // Id Str=reason
@@ -53,9 +53,10 @@ enum {
   P_PHONE_GONE = 121,   // Id                             (phone copy and transcript removed)
 };
 
-enum { ActTranscribe = 1, ActUpload = 2, ActSaveToPhone = 3, ActDeletePhone = 4, ActDeleteAll = 5 };
+enum { ActTranscribe = 1, ActUpload = 2, ActSaveToPhone = 3, ActDeletePhone = 4, ActDeleteAll = 5,
+       ActTranslate = 6 };
 enum { CtlStart = 1, CtlPause = 2, CtlResume = 3, CtlStop = 4, CtlDiscard = 5 };
-enum { JobTranscribe = 1, JobUpload = 2, JobSave = 3 };
+enum { JobTranscribe = 1, JobUpload = 2, JobSave = 3, JobTranslate = 4 };
 enum { JobQueued = 0, JobRunning = 1, JobDone = 2, JobFailed = 3 };
 
 #define FEATURE_SPEAKER 0x01
@@ -90,9 +91,10 @@ void comm_send_list(void);
 void comm_send_rec_state(void);
 void comm_send_item(uint8_t cmd, const RecMeta *m);
 void comm_send_simple(uint8_t cmd, uint16_t id, int32_t a);
-void comm_send_rec_begin(uint16_t id, uint8_t rate_code, uint32_t created);
+void comm_send_rec_begin(uint16_t id, uint8_t rate_code, uint32_t created, uint8_t gain);
 void comm_send_action(uint16_t id, uint8_t action, const char *lang);
-void comm_request_transcript(uint16_t id);
+// translation: the translation instead of the transcript
+void comm_request_transcript(uint16_t id, bool translation);
 void comm_request_play(uint16_t id, uint16_t block, uint16_t count);
 
 const JobStatus *comm_job_for(uint16_t id);

@@ -19,7 +19,7 @@ typedef struct {
   DialogConfirmCallback callback;
   void *context;
   AppTimer *timeout;
-  char message[160];
+  char message[220];
 } Dialog;
 
 static void prv_finish(void *data) {
@@ -57,6 +57,28 @@ static void prv_timeout(void *ctx) {
   prv_close(d, false);
 }
 
+// True when every word of text fits on one line of width: long words (German compounds, French
+// "enregistrement" on the 144 px screen) would otherwise be broken mid-word.
+static bool prv_words_fit(const char *text, GFont font, int16_t width) {
+  char word[48];
+  const char *p = text;
+  while (*p) {
+    while (*p == ' ' || *p == '\n') p++;
+    size_t n = 0;
+    while (p[n] && p[n] != ' ' && p[n] != '\n') n++;
+    if (n == 0) break;
+    if (n < sizeof(word)) {
+      memcpy(word, p, n);
+      word[n] = '\0';
+      GSize size = graphics_text_layout_get_content_size(word, font, GRect(0, 0, 1000, 100),
+                                                         GTextOverflowModeWordWrap, GTextAlignmentLeft);
+      if (size.w > width) return false;
+    }
+    p += n;
+  }
+  return true;
+}
+
 static void prv_load(Window *window) {
   Dialog *d = window_get_user_data(window);
   Layer *root = window_get_root_layer(window);
@@ -70,6 +92,12 @@ static void prv_load(Window *window) {
   GRect text_box = GRect(pad, 0, width - 2 * pad, bounds.size.h);
   GSize text = graphics_text_layout_get_content_size(d->message, font, text_box,
                                                      GTextOverflowModeWordWrap, GTextAlignmentCenter);
+  // A smaller font when a word is too wide or the text too long for the screen.
+  if (!prv_words_fit(d->message, font, text_box.size.w) || text.h > bounds.size.h - icon_size - 16) {
+    font = fonts_get_system_font(BIG_SCREEN ? FONT_KEY_GOTHIC_24_BOLD : FONT_KEY_GOTHIC_18_BOLD);
+    text = graphics_text_layout_get_content_size(d->message, font, text_box,
+                                                 GTextOverflowModeWordWrap, GTextAlignmentCenter);
+  }
   int16_t block = icon_size + 6 + text.h;
   int16_t top = (bounds.size.h - block) / 2 - 6;
   if (top < 4) top = 4;

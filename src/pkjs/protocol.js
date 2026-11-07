@@ -50,12 +50,14 @@ module.exports = {
   REC_OPEN: 0x04,
   REC_TRANSCRIPT: 0x08,
   REC_UPLOADED: 0x10,
+  REC_TRANSLATION: 0x20,
 
   ACT_TRANSCRIBE: 1,
   ACT_UPLOAD: 2,
   ACT_SAVE: 3,
   ACT_DELETE_PHONE: 4,
   ACT_DELETE_ALL: 5,
+  ACT_TRANSLATE: 6,
 
   CTL_START: 1,
   CTL_PAUSE: 2,
@@ -66,6 +68,7 @@ module.exports = {
   JOB_TRANSCRIBE: 1,
   JOB_UPLOAD: 2,
   JOB_SAVE: 3,
+  JOB_TRANSLATE: 4,
   JOB_QUEUED: 0,
   JOB_RUNNING: 1,
   JOB_DONE: 2,
@@ -73,7 +76,13 @@ module.exports = {
 
   CAP_TRANSCRIBE: 0x01,
   CAP_WEBDAV: 0x02,
+  CAP_TRANSLATE: 0x04,     // into any language (chat model)
+  CAP_TRANSLATE_EN: 0x08,  // into English only (Whisper)
 
   FEATURE_SPEAKER: 0x01,
-  FEATURE_ROUND: 0x02
+  FEATURE_ROUND: 0x02,
+
+  GAIN_DEFAULT: 1,
+  // Mic gain steps in dB, as the watch numbers them (src/c/common.h)
+  GAIN_DB: [-6, 0, 6, 12, 18]
 };
